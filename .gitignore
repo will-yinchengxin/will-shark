@@ -4,4 +4,3 @@ go.sum
 .DS_Store
 tests/
 vendor/
-logs/
