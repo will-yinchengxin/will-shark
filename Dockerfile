@@ -19,14 +19,14 @@ COPY envconfig/ envconfig/
 
 EXPOSE 8899
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o will main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o willshark main.go
 
 FROM centos:7.2.1511
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo 'Asia/Shanghai' >/etc/timezone
 
 WORKDIR /
-COPY --from=builder /workspace/will .
+COPY --from=builder /workspace/willshark .
 
-ENTRYPOINT ["/will"]
-CMD ["will"]
+ENTRYPOINT ["/willshark"]
+CMD ["willshark"]
