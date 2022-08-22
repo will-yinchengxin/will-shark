@@ -1,0 +1,7 @@
+.idea/
+\.idea/
+go.sum
+.DS_Store
+tests/
+vendor/
+will_tools/logs/

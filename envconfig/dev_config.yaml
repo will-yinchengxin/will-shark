@@ -1,0 +1,38 @@
+dev:
+  mysql:
+    will:
+      Host: 172.16.161.54
+      Port: 3306
+      User: root
+      Password: '123456'
+      DataBase: will
+      ParseTime: True
+      MaxIdleConns: 10
+      MaxOpenConns: 30
+      ConnMaxLifetime: 28800
+      ConnMaxIdletime: 7200
+  redis:
+    will:
+      host: 172.16.161.54:6379
+      password: ""
+      database: 0
+      maxIdleNum: 50
+      maxActive: 5000
+      maxIdleTimeout: 600
+      connectTimeout: 1
+      readTimeout: 2
+    RedisTwo:
+      host: 127.0.0.1:16379
+      password: ""
+      database: 1
+      maxIdleNum: 50
+      maxActive: 5000
+      maxIdleTimeout: 600
+      connectTimeout: 1
+      readTimeout: 2
+  rocketmq:
+    GroupName: test-rocket
+    Topic: test-rocket
+    Host:
+      - 127.0.0.1:9876
+    Retry: 3
