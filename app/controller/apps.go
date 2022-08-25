@@ -36,6 +36,13 @@ func (apps *Apps) AppList(ctx *gin.Context) {
 	return
 }
 
+// @Summary 获取App信息
+// @Description 通过 redis 获取信息
+// @Tags App相关
+// @ID AppInfo
+// @Accept json
+// @Produce json
+// @Router /v1/apps/redis [post]
 func (apps *Apps) AppInfo(ctx *gin.Context) {
 	var (
 		spanFatherCtx context.Context

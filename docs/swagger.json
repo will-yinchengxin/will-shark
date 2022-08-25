@@ -1,0 +1,25 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/v1/apps/redis": {
+            "post": {
+                "description": "通过 redis 获取信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "App相关"
+                ],
+                "summary": "获取App信息",
+                "operationId": "AppInfo",
+                "responses": {}
+            }
+        }
+    }
+}

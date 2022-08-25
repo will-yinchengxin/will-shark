@@ -15,6 +15,8 @@ require (
 	github.com/jinzhu/now v1.1.5
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.12.0
+	github.com/swaggo/files v0.0.0-20220728132757-551d4a08d97a
+	github.com/swaggo/gin-swagger v1.5.2
 	gorm.io/driver/mysql v1.3.6
 	gorm.io/gorm v1.23.8
 )

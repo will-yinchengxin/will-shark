@@ -1,0 +1,16 @@
+info:
+  contact: {}
+paths:
+  /v1/apps/redis:
+    post:
+      consumes:
+      - application/json
+      description: 通过 redis 获取信息
+      operationId: AppInfo
+      produces:
+      - application/json
+      responses: {}
+      summary: 获取App信息
+      tags:
+      - App相关
+swagger: "2.0"

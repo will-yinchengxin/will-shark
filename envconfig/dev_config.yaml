@@ -1,10 +1,10 @@
 dev:
   mysql:
     will:
-      Host: 172.16.161.54
-      Port: 3306
-      User: root
-      Password: '123456'
+      Host: 172.16.27.247
+      Port: 13306
+      User: will
+      Password: 'admin123'
       DataBase: will
       ParseTime: True
       MaxIdleConns: 10
@@ -13,7 +13,7 @@ dev:
       ConnMaxIdletime: 7200
   redis:
     will:
-      host: 172.16.161.54:6379
+      host: 172.16.27.247:16379
       password: ""
       database: 0
       maxIdleNum: 50

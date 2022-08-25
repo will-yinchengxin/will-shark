@@ -7,6 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/now"
 	"github.com/sirupsen/logrus"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"io"
 	"io/ioutil"
 	"strconv"
@@ -68,6 +70,8 @@ func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 		_ = core.Log.Request(logInfo)
 		return ""
 	}))
+	// set swagger doc tools
+	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// set the global middleware
 	engine.Use(middlewares.Cors())
 	// init router
