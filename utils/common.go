@@ -1,9 +1,14 @@
 package utils
 
 import (
+	"github.com/jinzhu/copier"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
 	"runtime"
 	"strconv"
+	"strings"
+	"will/consts"
 	"will/core"
 	"will/will_tools/logs"
 )
@@ -40,4 +45,36 @@ func GetMqRealTag(tag string) (real string) {
 		return r
 	}
 	return tag
+}
+
+// copy a by b  b->a
+func CopyStructFields(a interface{}, b interface{}, fields ...string) (err error) {
+	return copier.Copy(a, b)
+}
+
+func WithMessage(err error, message string) error {
+	return errors.WithMessage(err, "==> "+printCallerNameAndLine()+message)
+}
+
+func printCallerNameAndLine() string {
+	pc, _, line, _ := runtime.Caller(2)
+	return runtime.FuncForPC(pc).Name() + "()@line:" + strconv.Itoa(line) + ": "
+}
+
+func GetSelfFuncName() string {
+	pc, _, _, _ := runtime.Caller(1)
+	return cleanUpFuncName(runtime.FuncForPC(pc).Name())
+}
+
+func cleanUpFuncName(funcName string) string {
+	end := strings.LastIndex(funcName, ".")
+	if end == -1 {
+		return ""
+	}
+	return funcName[end+1:]
+}
+
+func SetPassword(password string) ([]byte, error) {
+	newPass, err := bcrypt.GenerateFromPassword([]byte(password), consts.PasswordDifficult)
+	return newPass, err
 }
