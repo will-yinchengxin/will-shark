@@ -73,6 +73,6 @@ SET FOREIGN_KEY_CHECKS = 1;
 - cron job
 - wire
 
-### What can it do the future
+### What can it do in the future
 - grpc
 - Prometheus
