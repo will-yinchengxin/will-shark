@@ -1,4 +1,4 @@
-# Will-Shark
+# 🚀 Will-Shark
 > This is a lightweight go development framework
 
 ### How to start
