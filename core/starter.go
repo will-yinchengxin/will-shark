@@ -2,6 +2,7 @@ package core
 
 import (
 	"os"
+	"fmt"
 )
 
 var (
@@ -14,6 +15,9 @@ func Start() {
 	if len(os.Args) >= 2 {
 		Environment = os.Args[1]
 	}
+	
+	fmt.Printf("runtime.NumCPU(): %v\n", runtime.NumCPU())
+    	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	StopModuleFunction = append(StopModuleFunction, initLogger())
 
