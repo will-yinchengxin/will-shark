@@ -13,7 +13,7 @@ dev:
       ConnMaxIdletime: 7200
   redis:
     will:
-      host: 172.16.27.247:16379
+      host: 172.16.27.142:16379
       password: ""
       database: 0
       maxIdleNum: 50

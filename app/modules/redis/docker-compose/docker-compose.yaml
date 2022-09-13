@@ -1,0 +1,53 @@
+version: "3"
+
+services:
+  redis:
+    image: redis
+    ports:
+      - 16379:6379
+    container_name: redis
+    volumes:
+      - ./components/redis/data:/data
+      - ./components/redis/config/redis.conf:/usr/local/redis/config/redis.conf
+    environment:
+      TZ: Asia/Shanghai
+    restart: always
+    sysctls:
+      net.core.somaxconn: 1024
+    command: redis-server   # --requirepass will --appendonly yes --save 60 1 --loglevel warning
+
+# docker-compose 安装
+### 1)wget https://github.com/docker/compose/releases/download/1.25.0/docker-compose-Linux-x86_64
+### 2)mv docker-compose-Linux-x86_64 /usr/bin/docker-compose
+### 3)chmod +x /usr/bin/docker-compose
+### 4)docker-compose version
+## Test: docker exec -it redis redis-cli set name will  / docker exec -it redis redis-cli get name
+
+
+#  etcd:
+#    image: quay.io/coreos/etcd
+#    ports:
+#      - 2379:2379
+#      - 2380:2380
+#    container_name: etcd
+#    volumes:
+#      - /etc/timezone:/etc/timezone
+#      - /etc/localtime:/etc/localtime
+#    environment:
+#      ETCDCTL_API: 3
+#    restart: always
+#    command: /usr/local/bin/etcd --name etcd0 --data-dir /etcd-data --listen-client-urls http://0.0.0.0:2379 --advertise-client-urls http://0.0.0.0:2379 --listen-peer-urls http://0.0.0.0:2380 --initial-advertise-peer-urls http://0.0.0.0:2380 --initial-cluster etcd0=http://0.0.0.0:2380 --initial-cluster-token tkn --initial-cluster-state new
+#
+
+#  mysql:
+#    image: mysql:5.7
+#    ports:
+#      - 13306:3306
+#      - 23306:33060
+#    container_name: mysql
+#    volumes:
+#      - ./components/mysql/data:/var/lib/mysql
+#      - /etc/localtime:/etc/localtime
+#    environment:
+#      MYSQL_ROOT_PASSWORD: will
+#    restart: always

@@ -75,4 +75,5 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 ### 🚀 What can it do in the future
 - grpc
+- etcd
 - Prometheus
