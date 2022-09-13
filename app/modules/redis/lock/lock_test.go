@@ -25,7 +25,8 @@ func TestRedisLock(t *testing.T) {
 		return func(client *redis.RedisPool) {
 			key := strings.Rand()
 			firstLock := NewRedisLock(client, key)
-			firstLock.SetExpire(200)
+			// Todo： Adjust the expiration time as needed
+			firstLock.SetExpire(5)
 			firstAcquire, err := firstLock.Acquire()
 			assert.Nil(t, err)
 			assert.True(t, firstAcquire)
