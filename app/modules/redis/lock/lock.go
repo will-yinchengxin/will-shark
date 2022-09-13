@@ -54,7 +54,7 @@ func (rl *RedisLock) AcquireCtx(ctx context.Context) (bool, error) {
 	if err != nil {
 		// Todo: when do lock_test annotation the log plugin
 		AcquireCtxLog := logs.StringFormatter{
-			Msg: redis.AcquireCtxErr.Error() + fmt.Sprintf("Error on acquiring lock for %s, %s", rl.key, err.Error()),
+			Msg: fmt.Sprintf("Error on acquiring lock for %s, %s", rl.key, err.Error()),
 		}
 		_ = core.Log.Error(AcquireCtxLog)
 		return false, err
@@ -67,8 +67,9 @@ func (rl *RedisLock) AcquireCtx(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
+	// Todo: when do lock_test annotation the log plugin
 	AcquireCtxLog := logs.StringFormatter{
-		Msg: redis.AcquireCtxErr.Error() + fmt.Sprintf("Unknown reply when acquiring lock for %s: %v", rl.key, resp),
+		Msg: fmt.Sprintf("Unknown reply when acquiring lock for %s: %v", rl.key, resp),
 	}
 	_ = core.Log.Error(AcquireCtxLog)
 
