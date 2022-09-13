@@ -10,4 +10,6 @@ var (
 	setWitLockErr = errors.New("Redis SetWitLock err : ")
 	lenKeyErr     = errors.New("len key is zero")
 	evalCtxErr    = errors.New("Redis EvalCtx err : ")
+	AcquireCtxErr = errors.New("Redis Lock AcquireCtx err : ")
+	ReleaseCtxErr = errors.New("Redis Lock ReleaseCtx err : ")
 )
