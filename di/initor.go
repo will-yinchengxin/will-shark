@@ -95,7 +95,7 @@ func InitRedis() (*redis.RedisPool, func()) {
 		return nil, func() {}
 	}
 
-	return &redis.RedisPool{redisPool, redisPool.Get()}, func() {}
+	return &redis.RedisPool{Cache: redisPool, Conn: redisPool.Get()}, func() {}
 }
 
 func InitCronJobs() *cron.Jobs {
