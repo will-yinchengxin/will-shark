@@ -78,3 +78,11 @@ func SetPassword(password string) ([]byte, error) {
 	newPass, err := bcrypt.GenerateFromPassword([]byte(password), consts.PasswordDifficult)
 	return newPass, err
 }
+
+func InsertSliceHead() {
+	a := []int{1, 2, 3, 4, 5}
+	a = append(a, 0)
+	index := 2
+	copy(a[index+1:], a[index:])
+	a[index] = 0
+}
