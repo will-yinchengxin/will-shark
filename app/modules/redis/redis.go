@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	RS "github.com/garyburd/redigo/redis"
 	"github.com/gomodule/redigo/redis"
 	"will/core"
 	"will/will_tools/logs"
@@ -90,15 +89,14 @@ func (r *RedisPool) EvalCtx(ctx context.Context, script string, keys []string, a
 	if len(keys) == 0 {
 		return nil, lenKeyErr
 	}
-	s := RS.NewScript(len(keys), script)
 	cmdArgs := make([]interface{}, 0, len(keys)+len(args))
 	for _, val := range keys {
 		cmdArgs = append(cmdArgs, val)
 	}
 	cmdArgs = append(cmdArgs, args...)
-	val, err := s.Do(r.Conn, cmdArgs...)
+	finalCmdArgs := r.args(script, len(keys), cmdArgs)
+	val, err := r.Conn.Do("EVAL", finalCmdArgs...)
 	if err != nil {
-		// Todo: when do lock_test annotation the log plugin
 		logInfo := logs.StringFormatter{
 			Msg: evalCtxErr.Error() + err.Error(),
 		}
@@ -106,4 +104,19 @@ func (r *RedisPool) EvalCtx(ctx context.Context, script string, keys []string, a
 		return nil, err
 	}
 	return val, err
+}
+
+func (r *RedisPool) args(spec string, keyCount int, keysAndArgs []interface{}) []interface{} {
+	var args []interface{}
+	if keyCount <= 0 {
+		args = make([]interface{}, 1+len(keysAndArgs))
+		args[0] = spec
+		copy(args[1:], keysAndArgs)
+	} else {
+		args = make([]interface{}, 2+len(keysAndArgs))
+		args[0] = spec
+		args[1] = keyCount
+		copy(args[2:], keysAndArgs)
+	}
+	return args
 }

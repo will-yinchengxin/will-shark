@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"will/app/do/request"
 	"will/app/modules/mysql/dao"
 	"will/app/modules/mysql/entity"
 	conn "will/app/modules/redis"
+	"will/app/modules/redis/lock"
 	"will/utils"
 )
 
@@ -38,6 +40,17 @@ func (a *Apps) Info(ctx context.Context) (res interface{}, codeType *utils.CodeT
 	defer func() {
 		utils.ErrorLog(err)
 	}()
-	name := a.Rds.Get("name1")
-	return name, &utils.CodeType{}
+	clientListLock := lock.NewRedisLock(a.Rds, "client_list")
+	clientListLock.SetExpire(200)
+	clientListAcquire, err := clientListLock.Acquire()
+
+	if err != nil || !clientListAcquire {
+		fmt.Println(err, clientListAcquire, "clientListAcquire")
+		return nil, &utils.CodeType{}
+	}
+	release, err := clientListLock.Release()
+	if !release || err != nil {
+		return nil, &utils.CodeType{}
+	}
+	return nil, &utils.CodeType{}
 }

@@ -1,11 +1,22 @@
 dev:
   mysql:
     will:
-      Host: 172.16.27.247
-      Port: 13306
-      User: will
-      Password: 'admin123'
-      DataBase: will
+      Host: 172.16.27.76
+      Port: 3306
+      User: bossen
+      Password: 'Passw0rd@123'
+      DataBase: vcfn
+      ParseTime: True
+      MaxIdleConns: 10
+      MaxOpenConns: 30
+      ConnMaxLifetime: 28800
+      ConnMaxIdletime: 7200
+    willAno:
+      Host: 172.16.27.76
+      Port: 3306
+      User: bossen
+      Password: 'Passw0rd@123'
+      DataBase: vcfn_live
       ParseTime: True
       MaxIdleConns: 10
       MaxOpenConns: 30
@@ -13,7 +24,7 @@ dev:
       ConnMaxIdletime: 7200
   redis:
     will:
-      host: 172.16.27.142:16379
+      host: 172.16.27.76:6379
       password: ""
       database: 0
       maxIdleNum: 50
