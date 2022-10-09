@@ -19,7 +19,7 @@ func (r *RedisPool) WithContext(ctx context.Context) *RedisPool {
 }
 
 func (r *RedisPool) Get(key string) string {
-	Val, err := redis.String(r.Conn.Do("get", key))
+	Val, err := redis.String(r.Cache.Get().Do("get", key))
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: getKeyErr.Error() + err.Error(),
@@ -31,7 +31,7 @@ func (r *RedisPool) Get(key string) string {
 }
 
 func (r *RedisPool) Set(key string, val int) bool {
-	_, err := redis.String(r.Conn.Do("set", key, val))
+	_, err := redis.String(r.Cache.Get().Do("set", key, val))
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: setKeyErr.Error() + err.Error(),
@@ -43,7 +43,7 @@ func (r *RedisPool) Set(key string, val int) bool {
 }
 
 func (r *RedisPool) Expire(key string) bool {
-	_, err := r.Conn.Do("expire", key, 10)
+	_, err := r.Cache.Get().Do("expire", key, 10)
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: expireErr.Error() + err.Error(),
@@ -55,7 +55,7 @@ func (r *RedisPool) Expire(key string) bool {
 }
 
 func (r *RedisPool) Del(key string) bool {
-	_, err := r.Conn.Do("del", key)
+	_, err := r.Cache.Get().Do("del", key)
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: delErr.Error() + err.Error(),
@@ -67,7 +67,7 @@ func (r *RedisPool) Del(key string) bool {
 }
 
 func (r *RedisPool) SetWitLock(key string, val string, time int) bool { //SET test 1 EX 10 NX
-	intVal, err := r.Conn.Do("set", key, val, "EX", time, "NX")
+	intVal, err := r.Cache.Get().Do("set", key, val, "EX", time, "NX")
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: setWitLockErr.Error() + err.Error(),
@@ -95,7 +95,7 @@ func (r *RedisPool) EvalCtx(ctx context.Context, script string, keys []string, a
 	}
 	cmdArgs = append(cmdArgs, args...)
 	finalCmdArgs := r.args(script, len(keys), cmdArgs)
-	val, err := r.Conn.Do("EVAL", finalCmdArgs...)
+	val, err := r.Cache.Get().Do("EVAL", finalCmdArgs...)
 	if err != nil {
 		logInfo := logs.StringFormatter{
 			Msg: evalCtxErr.Error() + err.Error(),
