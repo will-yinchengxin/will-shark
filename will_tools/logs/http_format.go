@@ -2,7 +2,7 @@ package logs
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/fatih/color"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,9 +19,17 @@ func (formatter HttpFormatter) Printf(logger *Logger, logType string) error {
 	formatter.AppId = logger.AppId
 	formatter.Env = logger.Env
 	formatter.LogType = logType
-	mapLog := make(map[string]interface{})
 	byteLog, _ := json.Marshal(formatter)
-	json.Unmarshal(byteLog, &mapLog)
-	fmt.Println(string(byteLog))
+
+	switch logType {
+	case LOG_INFO:
+		color.White(string(byteLog))
+	case LOG_PANIC, LOG_ERROR:
+		color.Red(string(byteLog))
+	case LOG_REQUEST:
+		color.Blue(string(byteLog))
+	case LOG_SUCCESS:
+		color.Green(string(byteLog))
+	}
 	return nil
 }

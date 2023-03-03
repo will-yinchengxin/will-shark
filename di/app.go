@@ -13,9 +13,13 @@ import (
 var Injector = wire.NewSet(wire.Struct(new(App), "*"))
 
 type App struct {
-	Engine   *gin.Engine
-	CronJobs *cron.Jobs
+	Engine *gin.Engine
+	Jobs   *cron.Jobs
 }
+
+var CronJobSet = wire.NewSet(
+	wire.Struct(new(cron.Jobs), "*"),
+)
 
 var RouterSet = wire.NewSet(
 	wire.Struct(new(router.Routers), "*"),

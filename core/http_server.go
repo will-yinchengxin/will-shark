@@ -2,45 +2,33 @@ package core
 
 import (
 	"context"
-	"github.com/fvbock/endless"
+	"github.com/fatih/color"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"time"
 	"will/consts"
-	"will/will_tools/logs"
 )
 
-func HttpStarter(engine *gin.Engine) func() {
-	if Environment == "dev" {
-		server, _ := initHTTPServer(context.TODO(), engine)
-		logInfo := logs.TraceFormatter{
-			Trace: logrus.Fields{
-				"welcome will's gang": "start the service with http in dev environment",
-			},
-		}
-		_ = Log.Info(logInfo)
-		err := server.ListenAndServe()
-		if err != nil {
-			logrus.Fatal(err.Error())
-		}
-	} else {
-		logInfo := logs.TraceFormatter{
-			Trace: logrus.Fields{
-				"welcome will's gang": "start the service with endless server in other environment",
-			},
-		}
-		_ = Log.Info(logInfo)
-		err := endless.ListenAndServe(":"+consts.SERVER_PORT, engine)
-		if err != nil {
-			logrus.Fatal(err.Error())
-		}
-	}
+const (
+	startStr = `
+ __        ___ _ _     ____  _                _    
+ \ \      / (_) | |   / ___|| |__   __ _ _ __| | __
+  \ \ /\ / /| | | |   \___ \| '_ \ / _  | '__| |/ /
+   \ V  V / | | | |    ___) | | | | (_| | |  |   <
+    \_/\_/  |_|_|_|   |____/|_| |_|\__,_|_|  |_|\_\
+`
+)
 
-	return func() {}
+// HttpStarter
+func HttpStarter(engine *gin.Engine) (*http.Server, func()) {
+	server, stopServer := initHTTPServer(context.Background(), engine)
+	color.Green(startStr)
+	color.Green("Server Port: " + consts.SERVER_PORT)
+	return server, stopServer
 }
 
-// you can set your own http.Handler in dev environment
+// initHTTPServer
+// You can set your own http.Handler in dev environment
 func initHTTPServer(ctx context.Context, handler http.Handler) (*http.Server, func()) {
 	srv := &http.Server{
 		Addr:         ":" + consts.SERVER_PORT,
@@ -55,8 +43,7 @@ func initHTTPServer(ctx context.Context, handler http.Handler) (*http.Server, fu
 
 		srv.SetKeepAlivesEnabled(false)
 		if err := srv.Shutdown(ctx); err != nil {
-			logInfo := logs.StringFormatter{Msg: err.Error()}
-			Log.Error(logInfo)
+			Log.ErrorDefault(err.Error())
 		}
 	}
 }

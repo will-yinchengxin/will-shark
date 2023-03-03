@@ -4,15 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 	"log"
 	"os"
 	"time"
-	"will/will_tools/logs"
-
-	"gorm.io/driver/mysql"
 )
 
 type MysqlConn struct {
@@ -50,18 +48,14 @@ func initMysql() func() {
 	return func() {
 		for key, value := range MysqlPool {
 			sqlDb, err := value.DB()
-			errStr := "nil"
-			if err == nil {
-				err = sqlDb.Close()
-			}
+			err = sqlDb.Close()
 			if err != nil {
-				errStr = err.Error()
+				_ = Log.PanicDefault("MySQL[ " + key + " ]Closed Err:" + err.Error())
+				continue
 			}
-			closeLog := logs.StringFormatter{
-				Msg: key + " DB closed err:" + errStr,
-			}
-			_ = Log.Info(closeLog)
+			_ = Log.SuccessDefault("MySQL[ " + key + " ]Closed Success!")
 		}
+
 	}
 }
 

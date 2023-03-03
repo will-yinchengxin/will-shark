@@ -3,14 +3,12 @@ package utils
 import (
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"runtime"
 	"strconv"
 	"strings"
 	"will/consts"
 	"will/core"
-	"will/will_tools/logs"
 )
 
 func ErrorLog(err error) {
@@ -19,19 +17,7 @@ func ErrorLog(err error) {
 	}
 	// 0 represents the caller of the caller (the call stack where the caller is located)
 	// 1 represents the caller who calls the caller and so on
-	pc, file, line, ok := runtime.Caller(2)
-	if !ok {
-		return
-	}
-	f := runtime.FuncForPC(pc)
-	_ = core.Log.Error(logs.TraceFormatter{
-		Trace: logrus.Fields{
-			"err":      err.Error(),
-			"file":     file,
-			"line":     strconv.Itoa(line),
-			"function": f.Name(),
-		},
-	})
+	_ = core.Log.ErrorDefault(err.Error())
 
 	return
 }

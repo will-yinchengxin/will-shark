@@ -2,7 +2,6 @@ package di
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/now"
@@ -12,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"strconv"
-	"will/app/daemon_jobs/cron"
 	"will/app/middlewares"
 	"will/app/modules/mysql/dao"
 	"will/app/modules/redis"
@@ -96,12 +94,4 @@ func InitRedis() (*redis.RedisPool, func()) {
 	}
 
 	return &redis.RedisPool{Cache: redisPool, Conn: redisPool.Get()}, func() {}
-}
-
-func InitCronJobs() *cron.Jobs {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &cron.Jobs{
-		Ctx:       ctx,
-		CancelFun: cancel,
-	}
 }

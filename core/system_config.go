@@ -1,10 +1,8 @@
 package core
 
 import (
-	"github.com/sirupsen/logrus"
 	"time"
 	"will/envconfig/config"
-	"will/will_tools/logs"
 )
 
 var Environment string
@@ -33,12 +31,7 @@ func coreConfig(env string) bool {
 		panic("env can not be null")
 	}
 	if err := fetchCoreConfig(env); err != nil {
-		logInfo := logs.TraceFormatter{
-			Trace: logrus.Fields{
-				"error": err.Error(),
-			},
-		}
-		_ = Log.Error(logInfo)
+		_ = Log.ErrorDefault(err.Error())
 		return false
 	}
 	return true

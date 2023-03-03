@@ -4,7 +4,6 @@ import (
 	"errors"
 	"github.com/gomodule/redigo/redis"
 	"time"
-	"will/will_tools/logs"
 )
 
 var (
@@ -42,12 +41,12 @@ func initRedis() func() {
 	return func() {
 		for key, value := range RedisPool {
 			if err := value.Close(); err != nil {
-				closeLog := logs.StringFormatter{
-					Msg: key + " Redis DB closed err:" + err.Error(),
-				}
-				_ = Log.Info(closeLog)
+				_ = Log.PanicDefault("Redis[ " + key + " ]Close Err:" + err.Error())
+				continue
 			}
+			_ = Log.SuccessDefault("Redis[ " + key + " ]Close Success!")
 		}
+
 	}
 }
 

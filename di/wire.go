@@ -15,7 +15,7 @@ func BuildInjector() (*App, func(), error) {
 		RouterSet,
 		Injector,
 		Daoset,
-		InitCronJobs,
+		CronJobSet,
 		InitGinEngine,
 		InitMysql,
 		InitRedis,

@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 )
@@ -17,7 +16,6 @@ func Start() {
 		Environment = os.Args[1]
 	}
 
-	fmt.Printf("runtime.NumCPU(): %v\n", runtime.NumCPU())
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	StopModuleFunction = append(StopModuleFunction, initLogger())

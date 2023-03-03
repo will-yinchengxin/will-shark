@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/apache/rocketmq-client-go/v2 v2.1.1
+	github.com/fatih/color v1.13.0
 	github.com/fvbock/endless v0.0.0-20170109170031-447134032cb6
 	github.com/garyburd/redigo v1.6.4
 	github.com/gin-gonic/gin v1.8.1
@@ -22,7 +23,6 @@ require (
 	github.com/swaggo/files v0.0.0-20220728132757-551d4a08d97a
 	github.com/swaggo/gin-swagger v1.5.2
 	github.com/swaggo/swag v1.8.1
-	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	gorm.io/driver/mysql v1.3.6
 	gorm.io/gorm v1.23.8

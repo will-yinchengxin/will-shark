@@ -7,6 +7,7 @@ package di
 
 import (
 	"will/app/controller"
+	"will/app/daemon_jobs/cron"
 	"will/app/modules/mysql/dao"
 	"will/app/router"
 	"will/app/service"
@@ -37,10 +38,13 @@ func BuildInjector() (*App, func(), error) {
 		Api: apiRouter,
 	}
 	engine, cleanup3 := InitGinEngine(routers)
-	jobs := InitCronJobs()
+	jobs := &cron.Jobs{
+		Rds:  redisPool,
+		User: user,
+	}
 	app := &App{
-		Engine:   engine,
-		CronJobs: jobs,
+		Engine: engine,
+		Jobs:   jobs,
 	}
 	return app, func() {
 		cleanup3()
