@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"will/consts"
 )
 
 type MysqlConn struct {
@@ -102,10 +103,7 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 	return db, nil
 }
 
-const (
-	GormSpanKey = "__gorm_span"
-	START_TIME  = "startTime"
-)
+const ()
 
 func withCallback(db *gorm.DB) {
 	_ = db.Callback().Query().Before("gorm:query").Register("callBackBeforeName", before)
@@ -125,13 +123,13 @@ func withCallback(db *gorm.DB) {
 func before(db *gorm.DB) {
 
 	_, span := Trace.Tracer("gorm").Start(db.Statement.Context, db.Statement.Table)
-	db.InstanceSet(START_TIME, time.Now())
-	db.InstanceSet(GormSpanKey, span)
+	db.InstanceSet(consts.JaegerStartTime, time.Now())
+	db.InstanceSet(consts.JaegerGormSpanKey, span)
 	return
 }
 
 func after(db *gorm.DB) {
-	_span, isExist := db.InstanceGet(GormSpanKey)
+	_span, isExist := db.InstanceGet(consts.JaegerGormSpanKey)
 	if !isExist {
 		return
 	}
@@ -139,7 +137,7 @@ func after(db *gorm.DB) {
 	if !ok {
 		return
 	}
-	_ts, isExist := db.InstanceGet(START_TIME)
+	_ts, isExist := db.InstanceGet(consts.JaegerStartTime)
 	if !isExist {
 		return
 	}
