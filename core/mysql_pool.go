@@ -103,8 +103,6 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 	return db, nil
 }
 
-const ()
-
 func withCallback(db *gorm.DB) {
 	_ = db.Callback().Query().Before("gorm:query").Register("callBackBeforeName", before)
 	_ = db.Callback().Delete().Before("gorm:before_delete").Register("callBackBeforeName", before)
