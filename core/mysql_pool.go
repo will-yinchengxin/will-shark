@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -92,9 +94,70 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Second * conn.ConnMaxLifetime)
 	sqlDB.SetConnMaxIdleTime(time.Second * conn.ConnMaxIdletime)
 
-	// Todo: do something about db trace
-
+	err = db.Callback().Create().Before("gorm:before_create").Register("callBackBeforeName", before)
+	if err != nil {
+		fmt.Println(err)
+	}
+	withCallback(db)
 	return db, nil
+}
+
+const (
+	GormSpanKey = "__gorm_span"
+	START_TIME  = "startTime"
+)
+
+func withCallback(db *gorm.DB) {
+	_ = db.Callback().Query().Before("gorm:query").Register("callBackBeforeName", before)
+	_ = db.Callback().Delete().Before("gorm:before_delete").Register("callBackBeforeName", before)
+	_ = db.Callback().Update().Before("gorm:setup_reflect_value").Register("callBackBeforeName", before)
+	_ = db.Callback().Row().Before("gorm:row").Register("callBackBeforeName", before)
+	_ = db.Callback().Raw().Before("gorm:raw").Register("callBackBeforeName", before)
+
+	_ = db.Callback().Create().After("gorm:after_create").Register("callBackAfterName", after)
+	_ = db.Callback().Query().After("gorm:after_query").Register("callBackAfterName", after)
+	_ = db.Callback().Delete().After("gorm:after_delete").Register("callBackAfterName", after)
+	_ = db.Callback().Update().After("gorm:after_update").Register("callBackAfterName", after)
+	_ = db.Callback().Row().After("gorm:row").Register("callBackAfterName", after)
+	_ = db.Callback().Raw().After("gorm:raw").Register("callBackAfterName", after)
+}
+
+func before(db *gorm.DB) {
+
+	_, span := Trace.Tracer("gorm").Start(db.Statement.Context, db.Statement.Table)
+	db.InstanceSet(START_TIME, time.Now())
+	db.InstanceSet(GormSpanKey, span)
+	return
+}
+
+func after(db *gorm.DB) {
+	_span, isExist := db.InstanceGet(GormSpanKey)
+	if !isExist {
+		return
+	}
+	span, ok := _span.(trace.Span)
+	if !ok {
+		return
+	}
+	_ts, isExist := db.InstanceGet(START_TIME)
+	if !isExist {
+		return
+	}
+	ts, ok := _ts.(time.Time)
+	if !ok {
+		return
+	}
+	if db.Error != nil {
+		span.SetAttributes(attribute.String("error", db.Error.Error()))
+	}
+	//sql语句
+	span.SetAttributes(attribute.String("sql", db.Dialector.Explain(db.Statement.SQL.String(), db.Statement.Vars...)))
+	//影响条数
+	span.SetAttributes(attribute.String("affectedRows", fmt.Sprintf("%d 条", db.Statement.RowsAffected)))
+	//执行时间
+	span.SetAttributes(attribute.String("executeTime", fmt.Sprintf("%d ms", time.Since(ts).Milliseconds())))
+	span.End()
+	return
 }
 
 func GetDB(key string) (db *gorm.DB, err error) {

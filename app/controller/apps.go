@@ -24,8 +24,8 @@ func (apps *Apps) AppList(ctx *gin.Context) {
 		return
 	}
 
-	// Todo add some trace tools code(jaeger or prometheus)
-	spanFatherCtx = context.Background()
+	spanFather, _ := ctx.Get("traceRoot")
+	spanFatherCtx = spanFather.(context.Context)
 
 	res, codeType := apps.App.List(req, spanFatherCtx)
 	if codeType.Code != 0 {

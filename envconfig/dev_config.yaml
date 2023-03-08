@@ -27,3 +27,4 @@ dev:
     Host:
       - 127.0.0.1:9876
     Retry: 3
+  jaegerHost: http://127.0.0.1:14268

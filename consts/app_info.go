@@ -1,8 +1,8 @@
 package consts
 
 const (
-	APP_NAME    string = "will"
-	APP_ID      int    = 100001
+	APP_NAME    string = "WillShark"
+	APP_ID      string = "100001"
 	SERVER_PORT string = "8899"
 )
 

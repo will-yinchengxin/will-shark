@@ -31,7 +31,7 @@ func main() {
 func listenToSystemSignals() {
 	signalChan := make(chan os.Signal, 1)
 	signals := []os.Signal{syscall.SIGKILL, syscall.SIGSTOP,
-		syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGILL,
+		syscall.SIGINT, syscall.SIGQUIT, syscall.SIGILL,
 		syscall.SIGABRT, syscall.SIGSYS, syscall.SIGTERM}
 	signal.Notify(signalChan, signals...)
 

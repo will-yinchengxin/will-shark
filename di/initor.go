@@ -23,6 +23,8 @@ import (
 func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 	gin.DefaultWriter = io.MultiWriter()
 	engine := gin.Default()
+	// 开启 jaeger 的链路追踪
+	engine.Use(middlewares.StartTrace())
 
 	engine.Use(func(c *gin.Context) {
 		bodyBytes, _ := ioutil.ReadAll(c.Request.Body)

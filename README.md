@@ -77,6 +77,7 @@ Server Port: 8899
 - rocketMQ pool
 - cron job
 - wire
+- jaeger
 
 ### 🚀 What can it do in the future
 - grpc
