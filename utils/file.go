@@ -33,3 +33,29 @@ func HasDir(path string) (bool, error) {
 	}
 	return false, _err
 }
+
+func ReadFileLineByLine() {
+	var (
+		filePath string
+	)
+	_, err := os.Stat(localFilePath)
+	if err != nil {
+		filePath = srvFilePath
+	} else {
+		filePath = localFilePath
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Println("无法打开文件{WeakPassword.txt}", err)
+		return
+	}
+	defer file.Close()
+
+	weakPassWorkList := make(map[string]struct{})
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		weakPassWorkList[scanner.Text()] = struct{}{}
+	}
+}
