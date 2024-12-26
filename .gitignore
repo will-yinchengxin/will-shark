@@ -6,3 +6,4 @@ tests/
 vendor/
 ./docs
 ./willshark.log
+.willshark.log
