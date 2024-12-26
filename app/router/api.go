@@ -2,7 +2,7 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"will/app/controller"
+	"willshark/app/controller"
 )
 
 type ApiRouter struct {

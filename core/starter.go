@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"runtime"
+	"willshark/utils/logs/logger"
 )
 
 var (
@@ -18,7 +19,8 @@ func Start() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	StopModuleFunction = append(StopModuleFunction, initLogger())
+	//StopModuleFunction = append(StopModuleFunction, initLogger())
+	logger.LogToFile()
 
 	// 从本地得yaml中读取配置文件, 可以根据需求调整，如：nacos
 	if ok, clearSystemConfig := initCoreConfig(); !ok {

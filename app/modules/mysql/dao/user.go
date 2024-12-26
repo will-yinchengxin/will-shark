@@ -2,7 +2,7 @@ package dao
 
 import (
 	"context"
-	"will/app/modules/mysql/entity"
+	"willshark/app/modules/mysql/entity"
 )
 
 type User struct {

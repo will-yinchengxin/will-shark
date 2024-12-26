@@ -1,13 +1,14 @@
 package di
 
 import (
+	"willshark/app/controller"
+	"willshark/app/daemon_jobs/cron"
+	"willshark/app/modules/mysql/dao"
+	"willshark/app/router"
+	"willshark/app/service"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
-	"will/app/controller"
-	"will/app/daemon_jobs/cron"
-	"will/app/modules/mysql/dao"
-	"will/app/router"
-	"will/app/service"
 )
 
 var Injector = wire.NewSet(wire.Struct(new(App), "*"))

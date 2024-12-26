@@ -2,121 +2,116 @@ package redis
 
 import (
 	"context"
-	"github.com/gomodule/redigo/redis"
-	"will/core"
-	"will/will_tools/logs"
+	"time"
+	"willshark/utils/logs/logger"
+
+	"github.com/redis/go-redis/v9"
 )
 
-type RedisPool struct {
-	Cache *redis.Pool
-	Conn  redis.Conn
+type Redis struct {
+	Cache *redis.Client
 	Ctx   context.Context
 }
 
-func (r *RedisPool) WithContext(ctx context.Context) *RedisPool {
-	r.Ctx = ctx
-	return r
+func (r *Redis) WithContext(ctx context.Context) *Redis {
+	return &Redis{
+		Cache: r.Cache,
+		Ctx:   ctx,
+	}
 }
 
-func (r *RedisPool) Get(key string) string {
-	Val, err := redis.String(r.Cache.Get().Do("get", key))
+func (r *Redis) Get(key string) (string, error) {
+	val, err := r.Cache.Get(r.Ctx, key).Result()
 	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: getKeyErr.Error() + err.Error(),
+		if err == redis.Nil {
+			return "", nil
 		}
-		_ = core.Log.Error(logInfo)
-		return ""
+		logger.Error(getKeyErr.Error() + err.Error())
+		return "", err
 	}
-	return Val
+	return val, nil
 }
 
-func (r *RedisPool) Set(key string, val int) bool {
-	_, err := redis.String(r.Cache.Get().Do("set", key, val))
+func (r *Redis) Set(key string, value interface{}, expiration time.Duration) error {
+	err := r.Cache.Set(r.Ctx, key, value, expiration).Err()
 	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: setKeyErr.Error() + err.Error(),
-		}
-		_ = core.Log.Error(logInfo)
-		return false
+		logger.Error(setKeyErr.Error() + err.Error())
+		return err
 	}
-	return true
+	return nil
 }
 
-func (r *RedisPool) Expire(key string) bool {
-	_, err := r.Cache.Get().Do("expire", key, 10)
+func (r *Redis) Del(keys ...string) error {
+	err := r.Cache.Del(r.Ctx, keys...).Err()
 	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: expireErr.Error() + err.Error(),
-		}
-		_ = core.Log.Error(logInfo)
-		return false
+		logger.Error(delErr.Error() + err.Error())
+		return err
 	}
-	return true
+	return nil
 }
 
-func (r *RedisPool) Del(key string) bool {
-	_, err := r.Cache.Get().Do("del", key)
+func (r *Redis) SetNX(key string, value interface{}, expiration time.Duration) (bool, error) {
+	ok, err := r.Cache.SetNX(r.Ctx, key, value, expiration).Result()
 	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: delErr.Error() + err.Error(),
-		}
-		_ = core.Log.Error(logInfo)
-		return false
+		logger.Error(setWitLockErr.Error() + err.Error())
+		return false, err
 	}
-	return true
+	return ok, nil
 }
 
-func (r *RedisPool) SetWitLock(key string, val string, time int) bool { //SET test 1 EX 10 NX
-	intVal, err := r.Cache.Get().Do("set", key, val, "EX", time, "NX")
-	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: setWitLockErr.Error() + err.Error(),
-		}
-		_ = core.Log.Error(logInfo)
-		return false
-	}
-	if intVal != nil {
-		return true
-	}
-	return false
-}
-
-func (r *RedisPool) Eval(script string, keys []string, args ...interface{}) (interface{}, error) {
-	return r.EvalCtx(context.Background(), script, keys, args)
-}
-
-func (r *RedisPool) EvalCtx(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+func (r *Redis) Eval(script string, keys []string, args ...interface{}) (interface{}, error) {
 	if len(keys) == 0 {
 		return nil, lenKeyErr
 	}
-	cmdArgs := make([]interface{}, 0, len(keys)+len(args))
-	for _, val := range keys {
-		cmdArgs = append(cmdArgs, val)
-	}
-	cmdArgs = append(cmdArgs, args...)
-	finalCmdArgs := r.args(script, len(keys), cmdArgs)
-	val, err := r.Cache.Get().Do("EVAL", finalCmdArgs...)
+
+	val, err := r.Cache.Eval(r.Ctx, script, keys, args...).Result()
 	if err != nil {
-		logInfo := logs.StringFormatter{
-			Msg: evalCtxErr.Error() + err.Error(),
-		}
-		_ = core.Log.Error(logInfo)
+		logger.Error(evalCtxErr.Error() + err.Error())
 		return nil, err
 	}
-	return val, err
+	return val, nil
 }
 
-func (r *RedisPool) args(spec string, keyCount int, keysAndArgs []interface{}) []interface{} {
-	var args []interface{}
-	if keyCount <= 0 {
-		args = make([]interface{}, 1+len(keysAndArgs))
-		args[0] = spec
-		copy(args[1:], keysAndArgs)
-	} else {
-		args = make([]interface{}, 2+len(keysAndArgs))
-		args[0] = spec
-		args[1] = keyCount
-		copy(args[2:], keysAndArgs)
-	}
-	return args
+func (r *Redis) Incr(key string) (int64, error) {
+	return r.Cache.Incr(r.Ctx, key).Result()
+}
+
+func (r *Redis) IncrBy(key string, value int64) (int64, error) {
+	return r.Cache.IncrBy(r.Ctx, key, value).Result()
+}
+
+func (r *Redis) Decr(key string) (int64, error) {
+	return r.Cache.Decr(r.Ctx, key).Result()
+}
+
+func (r *Redis) DecrBy(key string, value int64) (int64, error) {
+	return r.Cache.DecrBy(r.Ctx, key, value).Result()
+}
+
+func (r *Redis) Expire(key string, expiration time.Duration) (bool, error) {
+	return r.Cache.Expire(r.Ctx, key, expiration).Result()
+}
+
+func (r *Redis) TTL(key string) (time.Duration, error) {
+	return r.Cache.TTL(r.Ctx, key).Result()
+}
+
+func (r *Redis) HSet(key, field string, value interface{}) error {
+	return r.Cache.HSet(r.Ctx, key, field, value).Err()
+}
+
+func (r *Redis) HGet(key, field string) (string, error) {
+	return r.Cache.HGet(r.Ctx, key, field).Result()
+}
+
+func (r *Redis) HGetAll(key string) (map[string]string, error) {
+	return r.Cache.HGetAll(r.Ctx, key).Result()
+}
+
+func (r *Redis) Pipeline() redis.Pipeliner {
+	return r.Cache.Pipeline()
+}
+
+func (r *Redis) Client() *redis.Client {
+	return r.Cache
 }

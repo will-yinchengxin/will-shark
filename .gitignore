@@ -5,3 +5,4 @@ go.sum
 tests/
 vendor/
 ./docs
+./willshark.log

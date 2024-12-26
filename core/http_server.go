@@ -6,7 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"time"
-	"will/consts"
+	"willshark/consts"
+	"willshark/utils/logs/logger"
 )
 
 const (
@@ -43,7 +44,7 @@ func initHTTPServer(ctx context.Context, handler http.Handler) (*http.Server, fu
 
 		srv.SetKeepAlivesEnabled(false)
 		if err := srv.Shutdown(ctx); err != nil {
-			Log.ErrorDefault(err.Error())
+			logger.Error(err.Error())
 		}
 	}
 }

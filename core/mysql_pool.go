@@ -13,7 +13,8 @@ import (
 	"log"
 	"os"
 	"time"
-	"will/consts"
+	"willshark/consts"
+	loggerv1 "willshark/utils/logs/logger"
 )
 
 type MysqlConn struct {
@@ -53,10 +54,10 @@ func initMysql() func() {
 			sqlDb, err := value.DB()
 			err = sqlDb.Close()
 			if err != nil {
-				_ = Log.PanicDefault("MySQL[ " + key + " ]Closed Err:" + err.Error())
+				loggerv1.Error("MySQL[ " + key + " ]Closed Err:" + err.Error())
 				continue
 			}
-			_ = Log.SuccessDefault("MySQL[ " + key + " ]Closed Success!")
+			loggerv1.Info("MySQL[ " + key + " ]Closed Success!")
 		}
 
 	}

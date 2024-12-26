@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/spf13/viper"
-	"will/consts"
+	"willshark/consts"
 )
 
 type Setting struct {

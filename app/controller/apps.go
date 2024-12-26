@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"will/app/do/request"
-	"will/app/service"
-	"will/utils"
-	"will/utils/validator"
+	"willshark/app/do/request"
+	"willshark/app/service"
+	"willshark/utils"
+	"willshark/utils/validator"
 )
 
 type Apps struct {

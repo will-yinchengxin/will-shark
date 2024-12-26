@@ -5,8 +5,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"will/core"
-	"will/di"
+	"willshark/core"
+	"willshark/di"
+	"willshark/utils/logs/logger"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func listenToSystemSignals() {
 
 	for {
 		sig := <-signalChan
-		_ = core.Log.SuccessDefault(fmt.Sprintf("Receive System signal: %s", sig))
+		logger.Info(fmt.Sprintf("Receive System signal: %s", sig))
 		core.Stop()
 		return
 	}

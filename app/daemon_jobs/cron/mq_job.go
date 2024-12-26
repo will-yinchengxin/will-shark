@@ -20,7 +20,7 @@ func (j *Jobs) mqJob() {
 	//	for i := range msgs {
 	//		select {
 	//		case <-j.Ctx.Done():
-	//			_ = core.Log.Info(logs.TraceFormatter{
+	//			_ = core.v1.Info(logs.TraceFormatter{
 	//				Trace: logrus.Fields{
 	//					"info": "Receiving exit signal of main program，we will stop all the cron jobs",
 	//				},

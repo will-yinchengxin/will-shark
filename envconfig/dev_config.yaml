@@ -1,20 +1,20 @@
 dev:
   mysql:
-    will:
-      Host: 172.16.27.96
-      Port: 3306
-      User: will
-      Password: 'admin@123'
-      DataBase: vrpm
-      ParseTime: True
-      MaxIdleConns: 10
-      MaxOpenConns: 30
-      ConnMaxLifetime: 28800
-      ConnMaxIdletime: 7200
+    willshark:
+      host: 172.16.27.96
+      port: 3306
+      user: will
+      password: 'admin@123'
+      dataBase: vrpm
+      parseTime: True
+      maxIdleConns: 10
+      maxOpenConns: 30
+      connMaxLifetime: 28800
+      connMaxIdletime: 7200
   redis:
-    will:
-      host: 172.16.27.97:6379
-      password: ""
+    willshark:
+      host: 172.16.27.46:9736
+      password: "hasKITs!"
       database: 0
       maxIdleNum: 50
       maxActive: 10000
@@ -22,9 +22,11 @@ dev:
       connectTimeout: 1
       readTimeout: 2
   rocketmq:
-    GroupName: test-rocket
-    Topic: test-rocket
-    Host:
+    groupName: test-rocket
+    topic: test-rocket
+    host:
       - 127.0.0.1:9876
-    Retry: 3
-  jaegerHost: http://127.0.0.1:14268
+    retry: 3
+  jaeger:
+    enable: false
+    host: http://127.0.0.1:14268

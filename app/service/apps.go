@@ -3,16 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
-	"will/app/do/request"
-	"will/app/modules/mysql/dao"
-	"will/app/modules/mysql/entity"
-	conn "will/app/modules/redis"
-	"will/app/modules/redis/lock"
-	"will/utils"
+	"willshark/app/do/request"
+	"willshark/app/modules/mysql/dao"
+	"willshark/app/modules/mysql/entity"
+	conn "willshark/app/modules/redis"
+	"willshark/app/modules/redis/lock"
+	"willshark/utils"
 )
 
 type Apps struct {
-	Rds  *conn.RedisPool
+	Rds  *conn.Redis
 	User dao.User
 }
 
@@ -24,7 +24,7 @@ func (a *Apps) List(req request.Apps, ctx context.Context) (res interface{}, cod
 	defer func() {
 		utils.ErrorLog(err)
 	}()
-
+	return nil, &utils.CodeType{}
 	userModel := a.User.WithContext(ctx)
 	err = userModel.Info(&param, 1)
 	if err != nil {

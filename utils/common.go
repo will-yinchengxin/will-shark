@@ -7,8 +7,9 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"will/consts"
-	"will/core"
+	"willshark/consts"
+	"willshark/core"
+	"willshark/utils/logs/logger"
 )
 
 func ErrorLog(err error) {
@@ -17,7 +18,7 @@ func ErrorLog(err error) {
 	}
 	// 0 represents the caller of the caller (the call stack where the caller is located)
 	// 1 represents the caller who calls the caller and so on
-	_ = core.Log.ErrorDefault(err.Error())
+	logger.Error(err.Error())
 
 	return
 }

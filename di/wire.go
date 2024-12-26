@@ -5,7 +5,7 @@ package di
 
 import (
 	"github.com/google/wire"
-	"will/utils/validator"
+	"willshark/utils/validator"
 )
 
 func BuildInjector() (*App, func(), error) {

@@ -9,15 +9,15 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"io"
-	"io/ioutil"
 	"strconv"
-	"will/app/middlewares"
-	"will/app/modules/mysql/dao"
-	"will/app/modules/redis"
-	"will/app/router"
-	"will/consts"
-	"will/core"
-	"will/will_tools/logs"
+	"willshark/app/middlewares"
+	"willshark/app/modules/mysql/dao"
+	rc "willshark/app/modules/redis"
+	"willshark/app/router"
+	"willshark/consts"
+	"willshark/core"
+	"willshark/utils/logs"
+	"willshark/utils/logs/logger"
 )
 
 func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
@@ -27,8 +27,8 @@ func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 	engine.Use(middlewares.StartTrace())
 
 	engine.Use(func(c *gin.Context) {
-		bodyBytes, _ := ioutil.ReadAll(c.Request.Body)
-		c.Request.Body = ioutil.NopCloser(bytes.NewReader(bodyBytes))
+		bodyBytes, _ := io.ReadAll(c.Request.Body)
+		c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		var bodyMap map[string]interface{}
 		_ = json.Unmarshal(bodyBytes, &bodyMap)
 		c.Set("bodyMap", bodyMap)
@@ -67,7 +67,8 @@ func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 			Body:   body,
 			Trace:  trace,
 		}
-		_ = core.Log.Request(logInfo)
+		marshal, _ := json.Marshal(logInfo)
+		logger.Info(string(marshal))
 		return ""
 	}))
 	// set swagger doc tools
@@ -81,19 +82,20 @@ func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 }
 
 func InitMysql() (*dao.MysqlPool, func()) {
-	dbPool, err := core.GetDB(consts.DB_NAME_WILL)
+	dbPool, err := core.GetDB(consts.DB_NAME)
 	if err != nil {
-		panic("db is error")
+		panic("db is error: " + err.Error())
 		return nil, func() {}
 	}
 	return &dao.MysqlPool{dbPool}, func() {}
 }
 
-func InitRedis() (*redis.RedisPool, func()) {
-	redisPool, err := core.GetRedisDB("will")
+func InitRedis() (*rc.Redis, func()) {
+	redisPool, err := core.GetRedisDB(consts.Cache_NAME)
 	if err != nil {
+		panic("redis is error: " + err.Error())
 		return nil, func() {}
 	}
 
-	return &redis.RedisPool{Cache: redisPool, Conn: redisPool.Get()}, func() {}
+	return &rc.Redis{Cache: redisPool}, func() {}
 }

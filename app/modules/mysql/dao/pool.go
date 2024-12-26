@@ -2,8 +2,8 @@ package dao
 
 import (
 	"gorm.io/gorm"
-	"will/app/do/request"
-	"will/consts"
+	"willshark/app/do/request"
+	"willshark/consts"
 )
 
 type MysqlPool struct {

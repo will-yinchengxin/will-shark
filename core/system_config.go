@@ -2,7 +2,8 @@ package core
 
 import (
 	"time"
-	"will/envconfig/config"
+	"willshark/envconfig/config"
+	"willshark/utils/logs/logger"
 )
 
 var Environment string
@@ -31,7 +32,7 @@ func coreConfig(env string) bool {
 		panic("env can not be null")
 	}
 	if err := fetchCoreConfig(env); err != nil {
-		_ = Log.ErrorDefault(err.Error())
+		logger.Error(err.Error())
 		return false
 	}
 	return true

@@ -1,3 +1,6 @@
 package consts
 
-const DB_NAME_WILL = "will"
+const (
+	DB_NAME    = "willshark"
+	Cache_NAME = "willshark"
+)
