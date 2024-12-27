@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
@@ -75,4 +76,12 @@ func Randn(n int) string {
 
 func Seed(seed int64) {
 	src.Seed(seed)
+}
+
+func LowerFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	return string(unicode.ToLower(rune(s[0]))) + s[1:]
 }

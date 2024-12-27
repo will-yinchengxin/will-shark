@@ -10,7 +10,9 @@ var (
 	FAILURE                    = &CodeType{9001, "请求失败"}
 	RequestOtherServiceFailure = &CodeType{9002, "请求依赖的服务失败"}
 	GlobalError                = &CodeType{9003, "服务器异常,请稍后重试"}
-	NotFoundError              = &CodeType{9004, "DB NOT FOUND"}
+	NotFoundError              = &CodeType{9004, "NOT FOUND"}
+
+	DBError = &CodeType{1000, "DB Err"}
 )
 
 type CodeType struct {
@@ -31,7 +33,7 @@ func SendResponse(rep *CodeType, data interface{}) *RepType {
 	return r
 }
 
-//统一返回响应接口格式
+// 统一返回响应接口格式
 func Out(ctx *gin.Context, data interface{}) {
 	retData := SendResponse(SUCCESS, data)
 	ctx.JSON(http.StatusOK, retData)
@@ -39,7 +41,7 @@ func Out(ctx *gin.Context, data interface{}) {
 	return
 }
 
-//请求成功
+// 请求成功
 func Success(ctx *gin.Context) {
 	retData := SendResponse(SUCCESS, map[string]interface{}{})
 	ctx.JSON(http.StatusOK, retData)
@@ -47,7 +49,7 @@ func Success(ctx *gin.Context) {
 	return
 }
 
-//Error 输出错误
+// Error 输出错误
 func Error(ctx *gin.Context, rep *CodeType) {
 	retData := SendResponse(rep, map[string]interface{}{})
 	ctx.JSON(http.StatusOK, retData)
@@ -63,7 +65,7 @@ func ErrorWithData(ctx *gin.Context, rep *CodeType, data interface{}) {
 	return
 }
 
-//错误信息返回
+// 错误信息返回
 func MessageError(ctx *gin.Context, msg string) {
 	retData := SendResponse(&CodeType{Code: 5003, Msg: msg}, map[string]interface{}{})
 	ctx.JSON(http.StatusOK, retData)

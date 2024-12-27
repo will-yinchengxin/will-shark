@@ -7,3 +7,6 @@ vendor/
 ./docs
 ./willshark.log
 .willshark.log
+\.cmd/
+./cmd/
+cmd/

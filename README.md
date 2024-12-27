@@ -1,10 +1,36 @@
 # 🚀 Will-Shark
-> This is a lightweight go development framework
 
-### 🚀 How to start
-> Configure items according to env settings
-> 
-> the Set directory is in `./envconfig`, for example setting the `dev_config.yaml`
+> A lightweight and powerful Go development framework with code generation capabilities
+
+[![Go Version](https://img.shields.io/badge/Go-1.18+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## ✨ Features
+
+### 🛠 Infrastructure
+- MySQL connection pool
+- Redis connection pool
+- RocketMQ integration
+- Cron job support
+- Dependency injection (Wire)
+- Distributed tracing (Jaeger)
+
+### 🔧 Code Generator
+- Auto-generate CRUD code from SQL
+- Support multiple table structures
+- Generate standardized layered architecture
+- Swagger documentation
+- Parameter validation
+- Unified error handling
+
+### 🚀 Coming Soon
+- gRPC support
+- Etcd integration
+- Prometheus metrics
+
+### Configuration
+Create your configuration file in `./envconfig`, for example `dev_config.yaml`:
+
 ```yaml
 dev:
   mysql:
@@ -35,51 +61,59 @@ dev:
     Host:
       - 127.0.0.1:9876
     Retry: 3
-````
-> sql file
-```sql
-SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0;
+```
 
--- ----------------------------
--- Table structure for user
--- ----------------------------
-DROP TABLE IF EXISTS `user`;
+### Code Generation
+
+#### Generate from SQL File
+```bash
+# Generate CRUD code from SQL file
+./gen -name=willshark -sql-file=./sql/tables.sql
+```
+
+#### Example SQL
+```sql
 CREATE TABLE `user` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL DEFAULT '',
   `age` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
 
--- ----------------------------
--- Records of user
--- ----------------------------
-BEGIN;
-INSERT INTO `user` (`id`, `name`, `age`) VALUES (1, 'will', 18);
-COMMIT;
+### Project Structure
+```
+app/
+├── controller/      # HTTP handlers
+├── service/        # Business logic
+├── router/         # Route definitions
+├── modules/
+│   ├── mysql/
+│   │   ├── entity/ # Database models
+│   │   └── dao/    # Data access
+└── do/
+    ├── request/    # Request DTOs
+    └── response/   # Response DTOs
+```
 
-SET FOREIGN_KEY_CHECKS = 1;
-````
-> ### 🚀 Run it !!!
-````
-/private/var/folders/j9/plv1p__96fg_pf5fwx1f87200000gn/T/GoLand/___go_build_will
+## 🚀 Run the Application
+
+```bash
+go run main.go
+
  __        ___ _ _     ____  _                _    
  \ \      / (_) | |   / ___|| |__   __ _ _ __| | __
   \ \ /\ / /| | | |   \___ \| '_ \ / _  | '__| |/ /
    \ V  V / | | | |    ___) | | | | (_| | |  |   <
     \_/\_/  |_|_|_|   |____/|_| |_|\__,_|_|  |_|\_\
-Server Port: 8899
-````
-### 🚀 What can it do
-- mysql pool
-- redis pool
-- rocketMQ pool
-- cron job
-- wire
-- jaeger
 
-### 🚀 What can it do in the future
-- grpc
-- etcd
-- Prometheus
+Server Port: 8899
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
