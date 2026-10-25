@@ -1,10 +1,11 @@
 package cron
 
 import (
-	"fmt"
+	"context"
+	"log/slog"
 )
 
-func (j *Jobs) oneCronJob() {
-	fmt.Println("this is job one")
+func (j *Jobs) oneCronJob(ctx context.Context) {
+	slog.InfoContext(ctx, "this is job one")
 	// you own job
 }

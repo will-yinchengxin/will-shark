@@ -4,9 +4,9 @@
         "contact": {}
     },
     "paths": {
-        "/v1/apps/redis": {
+        "/v1/apps/mysql": {
             "post": {
-                "description": "通过 redis 获取信息",
+                "description": "通过 mysql 获取信息",
                 "consumes": [
                     "application/json"
                 ],
@@ -17,8 +17,122 @@
                     "App相关"
                 ],
                 "summary": "获取App信息",
-                "operationId": "AppInfo",
-                "responses": {}
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.Apps"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpx.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/apps/redis": {
+            "post": {
+                "description": "通过 redis 获取信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "App相关"
+                ],
+                "summary": "获取App信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpx.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.LockInfo"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "entity.User": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "httpx.Response": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.Apps": {
+            "type": "object",
+            "required": [
+                "account",
+                "name"
+            ],
+            "properties": {
+                "account": {
+                    "type": "string",
+                    "maxLength": 20
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "response.LockInfo": {
+            "type": "object",
+            "properties": {
+                "acquired": {
+                    "type": "boolean"
+                }
             }
         }
     }

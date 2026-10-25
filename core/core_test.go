@@ -2,10 +2,14 @@ package core
 
 import (
 	"context"
+	"net"
 	"strings"
 	"testing"
+	"time"
+	"willshark/envconfig/config"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/alicebob/miniredis/v2"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -41,8 +45,6 @@ func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 // 回归：未开启链路追踪时，gorm 回调曾因 Trace 为 nil 而 panic
 func TestGormCallbacksWithTracingDisabled(t *testing.T) {
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	CoreConfig = map[string]interface{}{}
-	initTracing()()
 
 	db, mock := newMockDB(t)
 	mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(1, "will"))
@@ -93,50 +95,64 @@ func TestGormCallbacksRecordSpanWithoutValues(t *testing.T) {
 	t.Fatal("db.statement attribute missing")
 }
 
-func TestInitTracingWithoutConfig(t *testing.T) {
-	CoreConfig = map[string]interface{}{"mysql": map[string]interface{}{}}
-	stop := initTracing()
-	stop()
+func TestNewTracingDisabledIsNoop(t *testing.T) {
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	shutdown, err := NewTracing(context.Background(), config.Tracing{}, config.App{Name: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
+		t.Fatal("disabled tracing must not install sdk provider")
+	}
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestInitTracingEnabledRequiresEndpoint(t *testing.T) {
-	CoreConfig = map[string]interface{}{"tracing": map[string]interface{}{"enable": true}}
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected panic for empty endpoint")
-		}
-	}()
-	initTracing()
-}
-
-func TestInitTracingEnabled(t *testing.T) {
-	CoreConfig = map[string]interface{}{"tracing": map[string]interface{}{
-		"enable": true, "endpoint": "127.0.0.1:4318", "insecure": true,
-	}}
-	stop := initTracing()
+func TestNewTracingEnabled(t *testing.T) {
 	t.Cleanup(func() { otel.SetTracerProvider(noop.NewTracerProvider()) })
+	shutdown, err := NewTracing(context.Background(),
+		config.Tracing{Enable: true, Endpoint: "127.0.0.1:4318", Insecure: true, SampleRatio: 1},
+		config.App{Name: "t", ID: "1", Env: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); !ok {
 		t.Fatal("sdk tracer provider not installed")
 	}
-	stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = shutdown(ctx) // 无 collector 时导出失败可忽略，只要求不阻塞
 }
 
-func TestGetPoolsUnknownKey(t *testing.T) {
-	if _, err := GetDB("nope"); err == nil {
-		t.Fatal("expected error")
+func TestNewRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := NewRedis(context.Background(), config.Redis{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := GetRedisDB("nope"); err == nil {
-		t.Fatal("expected error")
+	_ = client.Close()
+
+	addr := mr.Addr()
+	mr.Close()
+	if _, err := NewRedis(context.Background(), config.Redis{Addr: addr, DialTimeout: 200 * time.Millisecond}); err == nil {
+		t.Fatal("expected error for unreachable redis")
 	}
 }
 
-func TestCorsAllowOrigins(t *testing.T) {
-	CoreConfig = map[string]interface{}{"cors": map[string]interface{}{"allowOrigins": []interface{}{"https://a.com"}}}
-	if got := CorsAllowOrigins(); len(got) != 1 || got[0] != "https://a.com" {
-		t.Fatalf("got %v", got)
+func TestNewMySQLUnreachable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	CoreConfig = map[string]interface{}{}
-	if got := CorsAllowOrigins(); got != nil {
-		t.Fatalf("got %v", got)
+	addr := ln.Addr().(*net.TCPAddr)
+	_ = ln.Close()
+	start := time.Now()
+	_, err = NewMySQL(context.Background(), config.MySQL{Host: "127.0.0.1", Port: addr.Port, User: "u", Database: "d"})
+	if err == nil {
+		t.Fatal("expected error for unreachable mysql")
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Fatal("connect should fail fast")
 	}
 }

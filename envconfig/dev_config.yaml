@@ -1,39 +1,59 @@
 # 本地开发配置，配合仓库根目录 docker-compose.yaml 使用（docker compose up -d）
-# 注意：这里只能放本地开发用的假凭证，真实环境的密码不得提交到仓库
-dev:
-  mysql:
-    willshark:
-      host: 127.0.0.1
-      port: 3306
-      user: willshark
-      password: willshark
-      dataBase: willshark
-      maxIdleConns: 10
-      maxOpenConns: 30
-      connMaxLifetime: 28800
-      connMaxIdletime: 7200
-  redis:
-    willshark:
-      host: 127.0.0.1:6379
-      password: ""
-      database: 0
-      maxIdleNum: 50
-      maxActive: 200
-      maxIdleTimeout: 600
-      connectTimeout: 1
-      readTimeout: 2
-  rocketmq:
-    groupName: test-rocket
-    topic: test-rocket
-    host:
-      - 127.0.0.1:9876
-    retry: 3
-  # 链路追踪：OTLP/HTTP，Jaeger(>=1.35) / SkyWalking / ARMS 等均可接收
-  tracing:
-    enable: false
-    endpoint: 127.0.0.1:4318
-    insecure: true
-  # 跨域白名单；"*" 表示任意来源但不允许携带 cookie
-  cors:
-    allowOrigins:
-      - "*"
+# 只能放本地开发用的假凭证；真实环境的密码通过环境变量注入，例如 WS_MYSQL_WILLSHARK_PASSWORD
+# 时长字段必须带单位：500ms / 30s / 10m / 8h
+app:
+  swagger: true
+
+http:
+  port: 8899
+  logRequestBody: true
+
+log:
+  level: debug
+  format: text
+
+mysql:
+  willshark:
+    host: 127.0.0.1
+    port: 3306
+    user: willshark
+    password: willshark
+    database: willshark
+    maxIdleConns: 10
+    maxOpenConns: 30
+    connMaxLifetime: 8h
+    connMaxIdleTime: 2h
+    slowThreshold: 200ms
+
+redis:
+  willshark:
+    addr: 127.0.0.1:6379
+    password: ""
+    db: 0
+    poolSize: 50
+    minIdleConns: 5
+    connMaxIdleTime: 10m
+    dialTimeout: 1s
+    readTimeout: 2s
+    writeTimeout: 2s
+
+rocketmq:
+  enable: false
+  nameServers:
+    - 127.0.0.1:9876
+  groupName: test-rocket
+  retry: 3
+  topics:
+    channel_report: channel_report
+
+# 链路追踪：OTLP/HTTP，Jaeger(>=1.35) / SkyWalking / ARMS 等均可接收
+tracing:
+  enable: false
+  endpoint: 127.0.0.1:4318
+  insecure: true
+  sampleRatio: 1
+
+# 跨域白名单；"*" 表示任意来源但不允许携带 cookie
+cors:
+  allowOrigins:
+    - "*"

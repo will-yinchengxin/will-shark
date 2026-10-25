@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"time"
-	"willshark/utils/logs/logger"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -16,41 +15,22 @@ type Redis struct {
 
 func (r *Redis) Get(ctx context.Context, key string) (string, error) {
 	val, err := r.Cache.Get(ctx, key).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return "", nil
-		}
-		logger.Error(getKeyErr.Error() + err.Error())
-		return "", err
+	if errors.Is(err, redis.Nil) {
+		return "", nil
 	}
-	return val, nil
+	return val, err
 }
 
 func (r *Redis) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
-	err := r.Cache.Set(ctx, key, value, expiration).Err()
-	if err != nil {
-		logger.Error(setKeyErr.Error() + err.Error())
-		return err
-	}
-	return nil
+	return r.Cache.Set(ctx, key, value, expiration).Err()
 }
 
 func (r *Redis) Del(ctx context.Context, keys ...string) error {
-	err := r.Cache.Del(ctx, keys...).Err()
-	if err != nil {
-		logger.Error(delErr.Error() + err.Error())
-		return err
-	}
-	return nil
+	return r.Cache.Del(ctx, keys...).Err()
 }
 
 func (r *Redis) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
-	ok, err := r.Cache.SetNX(ctx, key, value, expiration).Result()
-	if err != nil {
-		logger.Error(setWitLockErr.Error() + err.Error())
-		return false, err
-	}
-	return ok, nil
+	return r.Cache.SetNX(ctx, key, value, expiration).Result()
 }
 
 func (r *Redis) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
@@ -63,11 +43,7 @@ func (r *Redis) Eval(ctx context.Context, script string, keys []string, args ...
 		// 脚本返回 nil（如 SET NX 未成功）不是错误
 		return nil, nil
 	}
-	if err != nil {
-		logger.Error(evalCtxErr.Error() + err.Error())
-		return nil, err
-	}
-	return val, nil
+	return val, err
 }
 
 func (r *Redis) Incr(ctx context.Context, key string) (int64, error) {

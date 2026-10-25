@@ -1,0 +1,53 @@
+# uat 环境配置模板：密码等敏感项留空，部署时通过环境变量注入，例如
+#   WS_MYSQL_WILLSHARK_HOST / WS_MYSQL_WILLSHARK_PASSWORD / WS_REDIS_WILLSHARK_PASSWORD
+app:
+  swagger: false
+
+http:
+  port: 8899
+  drainWait: 5s       # K8s 摘流等待
+  shutdownTimeout: 25s
+
+log:
+  level: info
+  format: json
+
+mysql:
+  willshark:
+    host: ""
+    port: 3306
+    user: willshark
+    password: ""
+    database: willshark
+    maxIdleConns: 10
+    maxOpenConns: 50
+    connMaxLifetime: 1h
+    connMaxIdleTime: 10m
+    slowThreshold: 500ms
+
+redis:
+  willshark:
+    addr: ""
+    password: ""
+    db: 0
+    poolSize: 100
+    minIdleConns: 10
+    connMaxIdleTime: 10m
+    dialTimeout: 1s
+    readTimeout: 2s
+    writeTimeout: 2s
+
+rocketmq:
+  enable: false
+  nameServers: []
+  groupName: willshark
+  retry: 3
+
+tracing:
+  enable: false
+  endpoint: ""
+  insecure: true
+  sampleRatio: 0.1
+
+cors:
+  allowOrigins: []

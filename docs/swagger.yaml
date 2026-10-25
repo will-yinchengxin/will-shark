@@ -1,15 +1,83 @@
+definitions:
+  entity.User:
+    properties:
+      age:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  httpx.Response:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+  request.Apps:
+    properties:
+      account:
+        maxLength: 20
+        type: string
+      name:
+        maxLength: 20
+        type: string
+    required:
+    - account
+    - name
+    type: object
+  response.LockInfo:
+    properties:
+      acquired:
+        type: boolean
+    type: object
 info:
   contact: {}
 paths:
-  /v1/apps/redis:
+  /v1/apps/mysql:
     post:
       consumes:
       - application/json
-      description: 通过 redis 获取信息
-      operationId: AppInfo
+      description: 通过 mysql 获取信息
+      parameters:
+      - description: 请求参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/request.Apps'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpx.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.User'
+              type: object
+      summary: 获取App信息
+      tags:
+      - App相关
+  /v1/apps/redis:
+    post:
+      description: 通过 redis 获取信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpx.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.LockInfo'
+              type: object
       summary: 获取App信息
       tags:
       - App相关

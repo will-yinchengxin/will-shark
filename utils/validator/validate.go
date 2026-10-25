@@ -1,143 +1,101 @@
+// Package validator 为 gin 的参数校验（binding tag）注册中文翻译与自定义规则。
+//
+// 请求结构体统一使用 binding tag，例如：
+//
+//	Phone string `json:"phone" binding:"required,phoneFormat" label:"手机号"`
+//
+// 错误提示中的字段名优先取 label，其次取 json 名。
 package validator
 
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/gin-gonic/gin"
+	"errors"
+	"reflect"
+	"strings"
+	"sync"
+
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/locales/zh"
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
-	zh_translations "github.com/go-playground/validator/v10/translations/zh"
-	"reflect"
-	"strings"
+	zhtranslations "github.com/go-playground/validator/v10/translations/zh"
 )
 
-type ValidatorX struct {
-	Validate *validator.Validate
-	uni      *ut.UniversalTranslator
-	trans    ut.Translator
+var (
+	setupOnce sync.Once
+	setupErr  error
+	trans     ut.Translator
+)
+
+type rule struct {
+	tag string
+	fn  validator.Func
+	msg string
 }
 
-func NewValidator() *ValidatorX {
-	validate := validator.New()
-	zh := zh.New()
-	uni := ut.New(zh, zh)
-	trans, _ := uni.GetTranslator("zh")
-	_ = zh_translations.RegisterDefaultTranslations(validate, trans)
-	validate.RegisterTagNameFunc(func(field reflect.StructField) string {
-		label := field.Tag.Get("label")
-		if label == "" {
-			return field.Name
+var rules = []rule{
+	{"passwordFormat", Password, "{0} 密码必须为字母，数字，特殊字符中至少两种的组合"},
+	{"phoneFormat", Phone, "{0} 数字组成，1开头并且长度必须为11"},
+	{"urlFormat", CheckUrl, "{0} 不符合url或uri的格式"},
+}
+
+// Setup 注册到 gin 默认校验器，可重复调用
+func Setup() error {
+	setupOnce.Do(func() { setupErr = setup() })
+	return setupErr
+}
+
+func setup() error {
+	v, ok := binding.Validator.Engine().(*validator.Validate)
+	if !ok {
+		return errors.New("gin validator engine is not go-playground/validator")
+	}
+	zhLocale := zh.New()
+	trans, _ = ut.New(zhLocale, zhLocale).GetTranslator("zh")
+	if err := zhtranslations.RegisterDefaultTranslations(v, trans); err != nil {
+		return err
+	}
+	v.RegisterTagNameFunc(fieldLabel)
+
+	for _, r := range rules {
+		if err := v.RegisterValidation(r.tag, r.fn); err != nil {
+			return err
 		}
+		msg, tag := r.msg, r.tag
+		err := v.RegisterTranslation(tag, trans,
+			func(ut ut.Translator) error { return ut.Add(tag, msg, true) },
+			func(ut ut.Translator, fe validator.FieldError) string {
+				t, _ := ut.T(tag, fe.Field())
+				return t
+			})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func fieldLabel(f reflect.StructField) string {
+	if label := f.Tag.Get("label"); label != "" {
 		return label
-	})
-	v := &ValidatorX{
-		Validate: validate,
-		uni:      uni,
-		trans:    trans,
 	}
-	v.Register()
-	return v
+	if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name != "" && name != "-" {
+		return name
+	}
+	return f.Name
 }
 
-func (v *ValidatorX) Register() {
-	_ = v.Validate.RegisterValidation("passwordFormat", Password)
-	_ = v.Validate.RegisterValidation("phoneFormat", Phone)
-	_ = v.Validate.RegisterValidation("urlFormat", CheckUrl)
-
-	_ = v.Validate.RegisterTranslation("passwordFormat", v.trans, func(ut ut.Translator) error {
-		return ut.Add("passwordFormat", "{0} 密码必须为字母，数字，特殊字符中至少两种的组合", true)
-	}, func(ut ut.Translator, fe validator.FieldError) string {
-		t, _ := ut.T("passwordFormat", fe.Field())
-		return t
-	})
-
-	_ = v.Validate.RegisterTranslation("phoneFormat", v.trans, func(ut ut.Translator) error {
-		return ut.Add("phoneFormat", "{0} 数字组成，1开头并且长度必须为11", true)
-	}, func(ut ut.Translator, fe validator.FieldError) string {
-		t, _ := ut.T("phoneFormat", fe.Field())
-		return t
-	})
-
-	_ = v.Validate.RegisterTranslation("urlFormat", v.trans, func(ut ut.Translator) error {
-		return ut.Add("urlFormat", "{0} 不符合url或uri的格式", true)
-	}, func(ut ut.Translator, fe validator.FieldError) string {
-		t, _ := ut.T("urlFormat", fe.Field())
-		return t
-	})
-}
-
-func (v *ValidatorX) Translate(errs validator.ValidationErrors) string {
-	var errList []string
-	for _, e := range errs {
-		// can translate each error one at a time.
-		errList = append(errList, e.Translate(v.trans))
+// Translate 把校验错误翻译为中文提示；非校验错误返回 ok=false
+func Translate(err error) (msg string, ok bool) {
+	var ve validator.ValidationErrors
+	if !errors.As(err, &ve) {
+		return "", false
 	}
-	return strings.Join(errList, "|")
-}
-
-// ParseQuery
-func (v *ValidatorX) ParseQuery(c *gin.Context, obj interface{}) string {
-	if err := c.ShouldBindQuery(obj); err != nil {
-		return "参数解析失败"
+	if trans == nil {
+		return ve.Error(), true
 	}
-	err := v.Validate.Struct(obj)
-	if err != nil {
-		return v.parseErrorHandler(err)
+	list := make([]string, 0, len(ve))
+	for _, e := range ve {
+		list = append(list, e.Translate(trans))
 	}
-
-	return ""
-}
-
-// parse form data
-func (v *ValidatorX) ParseForm(c *gin.Context, obj interface{}) string {
-	if err := c.ShouldBindWith(obj, binding.Form); err != nil {
-		return "参数解析失败"
-	}
-	err := v.Validate.Struct(obj)
-	if err != nil {
-		return v.parseErrorHandler(err)
-	}
-
-	return ""
-}
-
-// parse json data
-func (v *ValidatorX) ParseJson(c *gin.Context, obj interface{}) string {
-	if err := c.ShouldBindWith(obj, binding.JSON); err != nil {
-		return "参数解析失败," + err.Error()
-	}
-	err := v.Validate.Struct(obj)
-	if err != nil {
-		return v.parseErrorHandler(err)
-	}
-	return ""
-}
-
-// parse form data, use gin shouldBind method
-func (v *ValidatorX) ParseHeader(c *gin.Context, obj interface{}) string {
-	if err := c.ShouldBindHeader(obj); err != nil {
-		return "参数解析失败"
-	}
-	err := v.Validate.Struct(obj)
-	if err != nil {
-		return v.parseErrorHandler(err)
-	}
-
-	return ""
-}
-
-func (v *ValidatorX) parseErrorHandler(err error) string {
-	var errStr string
-	switch err.(type) {
-	case validator.ValidationErrors:
-		errStr = v.Translate(err.(validator.ValidationErrors))
-	case *json.UnmarshalTypeError:
-		unmarshalTypeError := err.(*json.UnmarshalTypeError)
-		errStr = fmt.Errorf("%s 类型错误，期望类型 %s", unmarshalTypeError.Field, unmarshalTypeError.Type.String()).Error()
-	default:
-		errStr = err.Error()
-	}
-	return errStr
+	return strings.Join(list, "; "), true
 }

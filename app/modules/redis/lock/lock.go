@@ -3,10 +3,10 @@ package lock
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"sync/atomic"
 	"willshark/app/modules/redis"
-	"willshark/utils/logs/logger"
 	"willshark/utils/strings"
 )
 
@@ -45,9 +45,7 @@ func (rl *RedisLock) AcquireCtx(ctx context.Context) (bool, error) {
 		[]string{rl.key}, rl.id, strconv.Itoa(int(seconds)*millisPerSecond+tolerance))
 
 	if err != nil {
-		// Todo: when do lock_test annotation the log plugin
-		logger.Error(fmt.Sprintf("Error on acquiring lock for %s, %s", rl.key, err.Error()))
-		return false, err
+		return false, fmt.Errorf("acquire lock %s: %w", rl.key, err)
 	} else if resp == nil {
 		return false, nil
 	}
@@ -57,8 +55,7 @@ func (rl *RedisLock) AcquireCtx(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	// Todo: when do lock_test annotation the log plugin
-	logger.Error(fmt.Sprintf("Unknown reply when acquiring lock for %s: %v", rl.key, resp))
+	slog.WarnContext(ctx, "unknown reply when acquiring lock", "key", rl.key, "reply", resp)
 
 	return false, nil
 }
@@ -70,9 +67,7 @@ func (rl *RedisLock) Release() (bool, error) {
 func (rl *RedisLock) ReleaseCtx(ctx context.Context) (bool, error) {
 	resp, err := rl.store.Eval(ctx, delCommand, []string{rl.key}, rl.id)
 	if err != nil {
-		logger.Error(redis.ReleaseCtxErr.Error() + err.Error())
-
-		return false, err
+		return false, fmt.Errorf("release lock %s: %w", rl.key, err)
 	}
 
 	reply, ok := resp.(int64)

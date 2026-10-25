@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"willshark/app/do/request"
+	"willshark/app/do/response"
 	"willshark/app/modules/mysql/dao"
 	"willshark/app/modules/mysql/entity"
 	conn "willshark/app/modules/redis"
 	"willshark/app/modules/redis/lock"
-	"willshark/utils"
+	"willshark/pkg/errs"
 
 	"gorm.io/gorm"
 )
@@ -18,44 +19,49 @@ type Apps struct {
 	User dao.User
 }
 
-func (a *Apps) List(req request.Apps, ctx context.Context) (res interface{}, codeType *utils.CodeType) {
-	var (
-		err   error
-		param entity.User
-	)
-	defer func() {
-		utils.ErrorLog(err)
-	}()
-	err = a.User.WithContext(ctx).Info(&param, 1)
+// List 示例：从 MySQL 读取用户
+//
+//	@Summary	获取App信息
+//	@Description	通过 mysql 获取信息
+//	@Tags		App相关
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		request.Apps	true	"请求参数"
+//	@Success	200		{object}	httpx.Response{data=entity.User}
+//	@Router		/v1/apps/mysql [post]
+func (a *Apps) List(ctx context.Context, req *request.Apps) (*entity.User, error) {
+	var user entity.User
+	err := a.User.WithContext(ctx).Info(&user, 1)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		err = nil
-		return nil, utils.NotFoundError
+		return nil, errs.NotFound
 	}
 	if err != nil {
-		return nil, utils.DBError
+		return nil, errs.Internal.Wrap(err)
 	}
-	return param, &utils.CodeType{}
+	return &user, nil
 }
 
-func (a *Apps) Info(ctx context.Context) (res interface{}, codeType *utils.CodeType) {
-	var (
-		err error
-	)
-	defer func() {
-		utils.ErrorLog(err)
-	}()
+// Info 示例：Redis 分布式锁
+//
+//	@Summary	获取App信息
+//	@Description	通过 redis 获取信息
+//	@Tags		App相关
+//	@Produce	json
+//	@Success	200	{object}	httpx.Response{data=response.LockInfo}
+//	@Router		/v1/apps/redis [post]
+func (a *Apps) Info(ctx context.Context, _ *struct{}) (*response.LockInfo, error) {
 	clientListLock := lock.NewRedisLock(a.Rds, "client_list")
 	clientListLock.SetExpire(200)
 	acquired, err := clientListLock.AcquireCtx(ctx)
 	if err != nil {
-		return nil, utils.FAILURE
+		return nil, errs.Internal.Wrap(err)
 	}
 	if !acquired {
-		return utils.SetRetVal("acquired", false), &utils.CodeType{}
+		return &response.LockInfo{Acquired: false}, nil
 	}
 	released, err := clientListLock.ReleaseCtx(ctx)
 	if err != nil {
-		return nil, utils.FAILURE
+		return nil, errs.Internal.Wrap(err)
 	}
-	return utils.SetRetVal("acquired", released), &utils.CodeType{}
+	return &response.LockInfo{Acquired: released}, nil
 }

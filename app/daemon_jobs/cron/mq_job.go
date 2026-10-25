@@ -1,7 +1,7 @@
 package cron
 
 func (j *Jobs) mqJob() {
-	//core.RocketmqConsumerClient.Subscribe(utils.GetMqRealTag(consts.MqTopicChannelReport), consumer.MessageSelector{}, func(ctx context.Context,
+	//mq.Consumer.Subscribe(cfg.RocketMQ.RealTopic(consts.MqTopicChannelReport), consumer.MessageSelector{}, func(ctx context.Context,
 	//	msgs ...*primitive.MessageExt) (c consumer.ConsumeResult, err error) {
 	//	defer func() {
 	//		if err != nil {

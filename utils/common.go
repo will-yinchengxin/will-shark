@@ -1,37 +1,24 @@
 package utils
 
 import (
-	"github.com/jinzhu/copier"
-	"github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
+	"log/slog"
 	"runtime"
 	"strconv"
 	"strings"
 	"willshark/consts"
-	"willshark/core"
-	"willshark/utils/logs/logger"
+
+	"github.com/jinzhu/copier"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func ErrorLog(err error) {
 	if err == nil {
 		return
 	}
-	// 0 represents the caller of the caller (the call stack where the caller is located)
-	// 1 represents the caller who calls the caller and so on
-	logger.Error(err.Error())
+	slog.Error(err.Error())
 
 	return
-}
-
-func GetMqRealTag(tag string) (real string) {
-	if core.RocketConfig == nil {
-		return tag
-	}
-	topic := core.RocketConfig.Topic
-	if r, ok := topic[tag]; ok {
-		return r
-	}
-	return tag
 }
 
 // copy a by b  b->a

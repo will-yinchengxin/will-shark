@@ -3,12 +3,14 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log"
-	"os"
+	"log/slog"
+	"net"
+	"strconv"
 	"time"
 	"willshark/consts"
-	loggerv1 "willshark/utils/logs/logger"
+	"willshark/envconfig/config"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,73 +22,30 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-type MysqlConn struct {
-	Host            string        `yaml:"host,omitempty"`
-	Port            int           `yaml:"port,omitempty"`
-	User            string        `yaml:"user,omitempty"`
-	PassWord        string        `yaml:"password,omitempty"`
-	DataBase        string        `yaml:"dataBase,omitempty"`
-	MaxIdleConns    int           `yaml:"maxIdleConns,omitempty"`
-	MaxOpenConns    int           `yaml:"maxOpenConns,omitempty"`
-	ConnMaxLifetime time.Duration `yaml:"connMaxLifetime,omitempty"`
-	ConnMaxIdletime time.Duration `yaml:"connMaxIdletime,omitempty"`
-}
+// NewMySQL 创建 gorm 连接池并验证连通性
+func NewMySQL(ctx context.Context, conf config.MySQL) (*gorm.DB, error) {
+	dsn := mysqldriver.NewConfig()
+	dsn.User = conf.User
+	dsn.Passwd = conf.Password
+	dsn.Net = "tcp"
+	dsn.Addr = net.JoinHostPort(conf.Host, strconv.Itoa(conf.Port))
+	dsn.DBName = conf.Database
+	dsn.ParseTime = true
+	dsn.Loc = time.Local
+	dsn.Collation = "utf8mb4_unicode_ci" // 连接字符集 utf8mb4，支持 emoji 与生僻字
+	dsn.Timeout = 5 * time.Second
 
-// MysqlPool 启动时一次性初始化，之后只读
-var MysqlPool map[string]*gorm.DB
-
-func initMysql() func() {
-	mysqlConfig, err := GetMapConfig(CoreConfig, "mysql", MysqlConn{})
-	if err != nil {
-		panic(err)
-	}
-	if len(mysqlConfig) < 1 {
-		panic("init gorm pool config failed, mysql config not found")
-	}
-
-	MysqlPool = make(map[string]*gorm.DB)
-	for name, val := range mysqlConfig {
-		db, err := initGorm(val.(*MysqlConn))
-		if err != nil {
-			panic("init mysql [" + name + "] failed: " + err.Error())
-		}
-		MysqlPool[name] = db
-	}
-
-	return func() {
-		for key, value := range MysqlPool {
-			sqlDb, err := value.DB()
-			if err == nil {
-				err = sqlDb.Close()
-			}
-			if err != nil {
-				loggerv1.Error("MySQL[ " + key + " ]Closed Err:" + err.Error())
-				continue
-			}
-			loggerv1.Info("MySQL[ " + key + " ]Closed Success!")
-		}
-	}
-}
-
-func initGorm(conn *MysqlConn) (*gorm.DB, error) {
-	connectStr := fmt.Sprintf("%s:%s@(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local",
-		conn.User, conn.PassWord, conn.Host, conn.Port, conn.DataBase)
-
-	db, err := gorm.Open(mysql.New(mysql.Config{
-		DSN:                       connectStr,
-		SkipInitializeWithVersion: false,
-	}), &gorm.Config{
+	db, err := gorm.Open(mysql.New(mysql.Config{DSN: dsn.FormatDSN()}), &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: true, //关闭表名复数
 		},
-		Logger: logger.New(
-			log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-			logger.Config{
-				SlowThreshold: time.Second * 3, // 慢 SQL 阈值
-				LogLevel:      logger.Silent,   // Log level
-				Colorful:      false,           // 禁用彩色打印
-			},
-		),
+		// 慢 SQL 与错误进 slog（自动带 trace_id）；只打印占位符 SQL，不打印参数值
+		Logger: logger.NewSlogLogger(slog.Default(), logger.Config{
+			SlowThreshold:             conf.SlowThreshold,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,
+			ParameterizedQueries:      true,
+		}),
 	})
 	if err != nil {
 		return nil, err
@@ -95,12 +54,19 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxIdleConns(conn.MaxIdleConns)
-	sqlDB.SetMaxOpenConns(conn.MaxOpenConns)
-	sqlDB.SetConnMaxLifetime(time.Second * conn.ConnMaxLifetime)
-	sqlDB.SetConnMaxIdleTime(time.Second * conn.ConnMaxIdletime)
+	sqlDB.SetMaxIdleConns(conf.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(conf.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(conf.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(conf.ConnMaxIdleTime)
 
-	if err = RegisterTraceCallbacks(db); err != nil {
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if err := RegisterTraceCallbacks(db); err != nil {
+		_ = sqlDB.Close()
 		return nil, err
 	}
 	return db, nil
@@ -164,12 +130,4 @@ func after(db *gorm.DB) {
 			span.SetAttributes(attribute.Int64("db.execute_ms", time.Since(start).Milliseconds()))
 		}
 	}
-}
-
-func GetDB(key string) (*gorm.DB, error) {
-	db, ok := MysqlPool[key]
-	if !ok {
-		return nil, errors.New("mysql [" + key + "] not initialized, check the mysql config")
-	}
-	return db, nil
 }

@@ -1,21 +1,23 @@
 package router
 
 import (
+	"willshark/app/service"
+	"willshark/pkg/httpx"
+
 	"github.com/gin-gonic/gin"
-	"willshark/app/controller"
 )
 
 type ApiRouter struct {
-	AppsApi *controller.Apps
+	Apps *service.Apps
 }
 
-func (api *ApiRouter) Initialize(app *gin.Engine) {
-	v1 := app.Group("v1")
+func (api *ApiRouter) Initialize(engine *gin.Engine) {
+	v1 := engine.Group("v1")
 	{
 		apps := v1.Group("apps")
 		{
-			apps.POST("mysql", api.AppsApi.AppList)
-			apps.POST("redis", api.AppsApi.AppInfo)
+			apps.POST("mysql", httpx.Handle(api.Apps.List))
+			apps.POST("redis", httpx.Handle(api.Apps.Info))
 		}
 	}
 }
