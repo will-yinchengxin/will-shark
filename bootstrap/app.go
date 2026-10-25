@@ -1,6 +1,3 @@
-// Package bootstrap 按依赖顺序显式组装应用（替代 wire），并负责启动与优雅退出。
-//
-// 新增依赖时：在 New 中创建并 add 到 closers，然后注入到需要它的 service。
 package bootstrap
 
 import (
@@ -8,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+	"willshark/app/controller"
 	"willshark/app/daemon_jobs/cron"
 	"willshark/app/modules/mysql/dao"
 	rc "willshark/app/modules/redis"
@@ -103,7 +101,7 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 	return app, func() { cl.closeAll(closeTimeout) }, nil
 }
 
-// wire 组装业务依赖：dao → service → controller → router / 定时任务。
+// wire 组装 HTTP 依赖：dao → service → controller → router；定时任务直接复用 service。
 // 注释 willshark:gen:* 为代码生成器的插入点，请保留；也可以手动在对应位置添加。
 func wire(cfg *config.Config, pool *dao.MysqlPool, rds *rc.Redis) (*router.Routers, *scheduler.Scheduler) {
 	// ---- dao ----
@@ -114,12 +112,13 @@ func wire(cfg *config.Config, pool *dao.MysqlPool, rds *rc.Redis) (*router.Route
 	appsSvc := &service.Apps{Rds: rds, User: userDao}
 	// willshark:gen:service
 
-	// ---- controller（需要直接操作 gin.Context 时使用，可选）----
+	// ---- controller：管理 HTTP 输入输出 ----
+	appsCtl := &controller.Apps{Svc: appsSvc}
 	// willshark:gen:controller
 
 	// ---- router ----
 	routers := &router.Routers{
-		API: &router.APIRouter{Apps: appsSvc},
+		API: &router.APIRouter{Apps: appsCtl},
 		// willshark:gen:router
 	}
 

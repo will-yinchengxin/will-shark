@@ -15,6 +15,11 @@ func TestIntegrationGeneratedCRUD(t *testing.T) {
     app, cleanup, err := New(context.Background(), cfg)
     if err != nil { t.Fatal(err) }
     defer cleanup()
+    for _, route := range app.Engine.Routes() {
+        if strings.HasPrefix(route.Path, "/v1/ticketprobe") || strings.HasPrefix(route.Path, "/v1/intprobe") {
+            if !strings.Contains(route.Handler, "/controller.") { t.Fatalf("generated route bypasses controller: %s %s", route.Path, route.Handler) }
+        }
+    }
     db := app.Infra.MySQL["willshark"].DB
     // 不覆盖既存表；只删除本测试成功创建的表。
     if err := db.Exec("CREATE TABLE ws_gen_crud_probe (code varchar(24) NOT NULL PRIMARY KEY, title varchar(50) NOT NULL, status int NOT NULL, balance decimal(10,2) NOT NULL, attempts int NOT NULL DEFAULT 18, enabled boolean NOT NULL)").Error; err != nil { t.Fatal(err) }

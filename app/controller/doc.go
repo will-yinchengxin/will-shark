@@ -1,6 +1,5 @@
-// Package controller 可选的控制器层。
+// Package controller 管理 HTTP 输入输出：绑定和校验请求、调用 Service、映射错误并输出响应。
 //
-// 大多数接口直接在 router 中用 httpx.Handle 绑定 service 方法即可；
-// 需要直接操作 gin.Context（读写 header/cookie、文件上传下载、SSE 流式输出等）时才使用 controller。
-// 生成：go tool willshark-gen module <name> -with router,controller,service,dto
+// 所有业务 HTTP 路由都绑定 Controller；Swagger 注释也放在这里。
+// Service 使用普通 context.Context 和 app/do 中的 DTO，可被定时任务等入口复用。
 package controller

@@ -7,10 +7,14 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -49,7 +53,7 @@ const (
 var allComponents = []string{CompRouter, CompController, CompService, CompDTO, CompJob}
 
 // DefaultComponents 未指定 -with 时生成的组件
-var DefaultComponents = []string{CompRouter, CompService, CompDTO}
+var DefaultComponents = []string{CompRouter, CompController, CompService, CompDTO}
 
 // DefaultActions 未指定 -actions 时生成的接口
 var DefaultActions = []string{"list", "get", "create", "update", "delete"}
@@ -57,7 +61,7 @@ var DefaultActions = []string{"list", "get", "create", "update", "delete"}
 // ModuleOptions module 命令参数
 type ModuleOptions struct {
 	Name     string
-	With     []string // 组件；会自动补齐依赖（router/controller → service → dto）
+	With     []string // 组件；会自动补齐依赖（router → controller → service → dto）
 	Actions  []string // list,get,create,update,delete 或任意自定义动作（POST /<action>）
 	SQLFile  string   // 指定后从表结构生成 entity/dao 与 CRUD 实现
 	Table    string   // SQL 文件中的表名，默认与 Name 相同
@@ -95,7 +99,6 @@ type data struct {
 	IDType      string
 	NeedItem    bool
 	HasList     bool
-	UseCtl      bool
 	JobSvc      bool
 	JobSchedule string
 }
@@ -149,6 +152,59 @@ func (g *Generator) bootstrapHas(line string) bool {
 	return err == nil && bytes.Contains(b, []byte(line))
 }
 
+// hasLegacyServiceRouter 按语法检查旧的 Router{Svc: ...} 装配，兼容换行和导入别名。
+func (g *Generator) hasLegacyServiceRouter(typeName string) (bool, error) {
+	src, err := os.ReadFile(g.path(bootstrapFile))
+	if err != nil {
+		return false, err
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), bootstrapFile, src, 0)
+	if err != nil {
+		return false, err
+	}
+	aliases := map[string]bool{}
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return false, err
+		}
+		if path != g.ModulePath+"/app/router" {
+			continue
+		}
+		name := "router"
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		aliases[name] = true
+	}
+	legacy := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		matches := false
+		switch typ := lit.Type.(type) {
+		case *ast.SelectorExpr:
+			pkg, ok := typ.X.(*ast.Ident)
+			matches = ok && aliases[pkg.Name] && typ.Sel.Name == typeName
+		case *ast.Ident:
+			matches = aliases["."] && typ.Name == typeName
+		}
+		if matches {
+			for _, elt := range lit.Elts {
+				if kv, ok := elt.(*ast.KeyValueExpr); ok {
+					if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Svc" {
+						legacy = true
+					}
+				}
+			}
+		}
+		return true
+	})
+	return legacy, nil
+}
+
 const (
 	bootstrapFile = "bootstrap/app.go"
 	routerBase    = "app/router/base.go"
@@ -197,20 +253,32 @@ func (g *Generator) Module(o ModuleOptions) (*Plan, error) {
 	ctlReady := g.exists(f.controller) && g.bootstrapHas(ctlVar+" :=")
 	dtoReady := g.exists(f.request)
 
-	// 依赖补齐：router/controller 需要 service，service/controller 需要 dto
+	// HTTP 固定经由 Controller；已有并已接入的组件可以复用。
 	need := func(c string) {
 		if !slices.Contains(with, c) {
 			with = append(with, c)
 			plan.note("auto-included %s (required by other components)", c)
 		}
 	}
-	if (slices.Contains(with, CompRouter) || slices.Contains(with, CompController)) && !svcReady {
+	if slices.Contains(with, CompRouter) && !ctlReady {
+		need(CompController)
+	}
+	if slices.Contains(with, CompController) && !svcReady {
 		need(CompService)
 	}
 	if (slices.Contains(with, CompService) || slices.Contains(with, CompController)) && !dtoReady {
 		need(CompDTO)
 	}
 	has := func(c string) bool { return slices.Contains(with, c) }
+	if has(CompRouter) && !o.NoWire {
+		legacy, err := g.hasLegacyServiceRouter(n.Pascal + "Router")
+		if err != nil {
+			return nil, fmt.Errorf("check router wiring: %w", err)
+		}
+		if legacy {
+			return nil, fmt.Errorf("module %s has legacy service wiring: migrate bootstrap/app.go to a controller binding before regenerating (or use -no-wire to generate files for manual migration)", n.Snake)
+		}
+	}
 
 	d := &data{
 		Module:  g.ModulePath,
@@ -218,7 +286,6 @@ func (g *Generator) Module(o ModuleOptions) (*Plan, error) {
 		Summary: n.Pascal,
 		Table:   table,
 		IDType:  "int64",
-		UseCtl:  has(CompController) || ctlReady,
 		JobSvc:  has(CompService) || svcReady,
 	}
 	if table != nil {
@@ -304,14 +371,13 @@ func (g *Generator) wire(plan *Plan, n Name, d *data, has func(string) bool, wit
 	if has(CompController) {
 		plan.insert(bootstrapFile, "willshark:gen:controller", fmt.Sprintf("%s := &controller.%s{Svc: %s}", ctlVar, n.Pascal, svcVar))
 		plan.addImport(bootstrapFile, g.ModulePath+"/app/controller")
+		if !has(CompRouter) {
+			plan.insert(bootstrapFile, "willshark:gen:controller", fmt.Sprintf("_ = %s // TODO: 注入到 router", ctlVar))
+		}
 		consumed = true
 	}
 	if has(CompRouter) {
-		field := fmt.Sprintf("Svc: %s", svcVar)
-		if d.UseCtl {
-			field = fmt.Sprintf("Ctl: %s", ctlVar)
-		}
-		plan.insert(bootstrapFile, "willshark:gen:router", fmt.Sprintf("%s: &router.%sRouter{%s},", n.Pascal, n.Pascal, field))
+		plan.insert(bootstrapFile, "willshark:gen:router", fmt.Sprintf("%s: &router.%sRouter{Ctl: %s},", n.Pascal, n.Pascal, ctlVar))
 		plan.insert(routerBase, "willshark:gen:router-field", fmt.Sprintf("%s *%sRouter", n.Pascal, n.Pascal))
 		plan.insert(routerBase, "willshark:gen:router-register", fmt.Sprintf("r.%s.Register(v1)", n.Pascal))
 		consumed = true

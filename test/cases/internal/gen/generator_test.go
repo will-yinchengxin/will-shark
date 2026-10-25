@@ -82,16 +82,13 @@ func read(t *testing.T, path string) string {
 func TestDependencyAutoInclude(t *testing.T) {
 	g, dir := newGen(t)
 	out := apply(t, g, ModuleOptions{Name: "order", With: []string{"router"}}, false)
-	if !strings.Contains(out, "auto-included service") || !strings.Contains(out, "auto-included dto") {
-		t.Fatalf("router should pull in service and dto:\n%s", out)
+	if !strings.Contains(out, "auto-included controller") || !strings.Contains(out, "auto-included service") || !strings.Contains(out, "auto-included dto") {
+		t.Fatalf("router should pull in controller, service and dto:\n%s", out)
 	}
-	for _, f := range []string{"app/router/order.go", "app/service/order.go", "app/do/request/order.go", "app/do/response/order.go"} {
+	for _, f := range []string{"app/router/order.go", "app/controller/order.go", "app/service/order.go", "app/do/request/order.go", "app/do/response/order.go"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("%s not generated", f)
 		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, "app/controller/order.go")); err == nil {
-		t.Error("controller should not be generated unless requested")
 	}
 }
 
@@ -210,7 +207,7 @@ func TestCustomActions(t *testing.T) {
 	g, dir := newGen(t)
 	apply(t, g, ModuleOptions{Name: "report", Actions: []string{"export", "daily-summary", "export"}}, false)
 	r := read(t, filepath.Join(dir, "app/router/report.go"))
-	if !strings.Contains(r, `grp.POST("/export", httpx.Handle(r.Svc.Export))`) || !strings.Contains(r, `grp.POST("/daily-summary", httpx.Handle(r.Svc.DailySummary))`) {
+	if !strings.Contains(r, `grp.POST("/export", r.Ctl.Export)`) || !strings.Contains(r, `grp.POST("/daily-summary", r.Ctl.DailySummary)`) {
 		t.Fatalf("router:\n%s", r)
 	}
 	if strings.Count(r, "/export") != 1 {
@@ -236,6 +233,8 @@ func TestGeneratedProjectCompiles(t *testing.T) {
 	apply(t, g, ModuleOptions{Name: "cleanup", With: []string{"job"}}, false)
 	apply(t, g, ModuleOptions{Name: "audit", With: []string{"service"}}, false)
 	apply(t, g, ModuleOptions{Name: "ping", With: []string{"dto"}, Actions: []string{"ping"}}, false)
+	apply(t, g, ModuleOptions{Name: "ledger", With: []string{"controller"}}, false)
+	apply(t, g, ModuleOptions{Name: "ledger", With: []string{"router"}}, false)
 
 	plan, err := g.Model(ModelOptions{SQLFile: sqlFile, Tables: []string{"ann_log_statistics", "ann_order_config"}})
 	if err != nil {
@@ -252,10 +251,13 @@ func TestGeneratedProjectCompiles(t *testing.T) {
 			t.Fatalf("go %s failed: %v\n%s", strings.Join(args, " "), err, out)
 		}
 	}
+	checkGeneratedSwagger(t, dir)
 
 	boot := strings.Join(strings.Fields(read(t, filepath.Join(dir, bootstrapFile))), " ") // 忽略 gofmt 对齐空格
 	for _, want := range []string{
 		"orderSvc := &service.Order{Pool: pool, Rds: rds}",
+		"orderCtl := &controller.Order{Svc: orderSvc}",
+		"Order: &router.OrderRouter{Ctl: orderCtl},",
 		"taskDao := &dao.Task{MysqlPool: pool}",
 		"taskSvc := &service.Task{Dao: taskDao}",
 		"reportCtl := &controller.Report{Svc: reportSvc}",

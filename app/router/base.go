@@ -1,4 +1,4 @@
-// Package router 路由注册：每个路由组一个结构体，由 bootstrap 注入 service / controller。
+// Package router 注册路径、HTTP 方法和中间件，由 bootstrap 注入 Controller。
 package router
 
 import "github.com/gin-gonic/gin"

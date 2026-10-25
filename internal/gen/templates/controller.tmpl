@@ -10,12 +10,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// {{.N.Pascal}} {{.Summary}}控制器：需要直接操作 gin.Context（header、cookie、文件、流式输出）时在这里处理
+// {{.N.Pascal}} {{.Summary}}控制器：管理参数绑定、校验、错误映射与 HTTP 响应
 type {{.N.Pascal}} struct {
 	Svc *service.{{.N.Pascal}}
 }
 {{range .Actions}}
-// {{.Method}} {{.HTTP}} {{.SwagPath}}
+// {{.Method}} {{.Summary}}
+//
+//	@Summary	{{.Summary}}
+//	@Tags		{{$.N.Kebab}}
+//	@Produce	json
+{{- if .HasBody}}
+//	@Accept		json
+{{- end}}
+{{- if .HasID}}
+//	@Param		id	path	{{swagType $.IDType}}	true	"ID"
+{{- end}}
+{{- if eq .Kind "list"}}
+//	@Param		page	query	int	false	"页码"
+//	@Param		size	query	int	false	"每页条数"
+{{- end}}
+{{- if .HasBody}}
+//	@Param		body	body	request.{{.Req}}	true	"请求参数"
+{{- end}}
+//	@Success	200	{object}	httpx.Response{data=response.{{.Resp}}}
+//	@Router		{{.SwagPath}} [{{lower .HTTP}}]
 func (c *{{$.N.Pascal}}) {{.Method}}(ctx *gin.Context) {
 	var req request.{{.Req}}
 	if err := httpx.Bind(ctx, &req); err != nil {

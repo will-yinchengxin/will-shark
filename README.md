@@ -44,21 +44,23 @@ go tool willshark-gen module -h                    # 查看全部参数
 | 组件 | 生成文件 | 说明 |
 |---|---|---|
 | `router` | `app/router/<name>.go` | 挂载到 `/v1/<name>`，自动注册到 `router/base.go` |
-| `controller` | `app/controller/<name>.go` | 可选；需要直接操作 `gin.Context`（header、cookie、文件、流式输出）时使用，不选则路由直接绑定 service |
-| `service` | `app/service/<name>.go` | 业务逻辑，强类型签名 + swagger 注释 |
+| `controller` | `app/controller/<name>.go` | HTTP 输入输出：参数绑定、校验、错误映射、响应与 Swagger 注释 |
+| `service` | `app/service/<name>.go` | 核心业务规则、流程编排与事务，使用普通 `context.Context` 和 DTO |
 | `dto` | `app/do/request/<name>.go`、`app/do/response/<name>.go` | 请求 / 响应结构体，带 `binding` 校验 |
 | `job` | `app/daemon_jobs/cron/<name>.go` | 定时任务，自动注入同名 service |
 | `all` | 以上全部 | |
 
-- 默认 `-with router,service,dto`，默认接口 `-actions list,get,create,update,delete`
-- **依赖自动补齐**：router / controller → service → dto；**已存在且已接入的组件直接复用**（例如先生成模块，之后再单独加 `-with job`）
+- 默认 `-with router,controller,service,dto`，默认接口 `-actions list,get,create,update,delete`
+- **固定 HTTP 调用链**：Router → Controller → Service → DAO；请求/响应 DTO 保留在 `app/do/request`、`app/do/response`
+- **依赖自动补齐**：router → controller → service → dto；**已存在且已接入的组件直接复用**（例如先生成模块，之后再单独加 `-with job`）。仍可单独生成 service/dto/job，用于非 HTTP 入口
 - **安全**：任一目标文件已存在时整体中止、不写任何文件（`-force` 覆盖）；`-dry-run` 只预览；重复执行不会重复接入
 - `-no-wire` 不修改 `bootstrap/app.go` 与 `app/router/base.go`（接入点是其中的 `// willshark:gen:*` 注释，请保留）
+- 旧版本若在 bootstrap 中用 `Router{Svc: ...}` 直接绑定 Service，自动接入会拒绝旧装配，避免写入重复路由字段。可先用 `-force -no-wire` 生成四层文件，再手动增加 Controller 并将原路由字段改为 `Ctl: xxxCtl`，最后运行 `make check`
 
 ### 常用示例
 
 ```bash
-# 1. 标准模块：router + service + dto（CRUD 骨架）
+# 1. 标准模块：router + controller + service + dto（CRUD 骨架）
 go tool willshark-gen module order
 
 # 2. 给已有模块追加定时任务（复用已有 service）
@@ -67,7 +69,7 @@ go tool willshark-gen module order -with job -every 10m
 # 3. 全部组件 + 自定义接口 + cron 表达式
 go tool willshark-gen module report -with all -actions list,export,daily-summary -cron "0 3 * * *"
 
-# 4. 从建表语句生成完整可用的 CRUD（entity + dao + dto + service + router）
+# 4. 从建表语句生成完整可用的 CRUD（entity + dao + dto + service + controller + router）
 go tool willshark-gen module task -sql sql/dynamic.sql
 go tool willshark-gen module order -sql sql/tables.sql -table t_order -with all   # 模块名与表名不同
 
@@ -143,24 +145,44 @@ SQL 到 Go 的映射规则：
        return &response.Task{ID: id}, nil
    }
    ```
-3. 路由一行：`grp.POST("", httpx.Handle(r.Svc.Create))`
-4. 在 `bootstrap/app.go` 的 `wire` 中组装依赖
+3. 在 `app/controller` 管理 HTTP 输入输出，并在方法上写 Swagger 注释：
+   ```go
+   func (c *Task) Create(ctx *gin.Context) {
+       var req request.CreateTask
+       if err := httpx.Bind(ctx, &req); err != nil {
+           httpx.Fail(ctx, err)
+           return
+       }
+       resp, err := c.Svc.Create(ctx.Request.Context(), &req)
+       if err != nil {
+           httpx.Fail(ctx, err)
+           return
+       }
+       if resp == nil {
+           httpx.OK(ctx, nil)
+           return
+       }
+       httpx.OK(ctx, resp)
+   }
+   ```
+4. Router 只注册路径、方法和中间件：`grp.POST("", r.Ctl.Create)`
+5. 在 `bootstrap/app.go` 的 `wire` 中组装 `DAO → Service → Controller → Router`；定时任务直接复用 Service
 
-`httpx.Handle` 依次绑定查询参数（`form`）、请求体（JSON / 表单）、路径参数（`uri`，优先级最高），统一校验一次；
+Controller 调用 `httpx.Bind` 依次绑定查询参数（`form`）、请求体（JSON / 表单）、路径参数（`uri`，优先级最高），统一校验一次；
 查询参数 / 表单 / 路径参数只绑定显式声明了 `form` / `uri` tag 的字段（gin 默认会按字段名绑定未打 tag 的字段，例如 `json:"-"` 的内部字段），
 输出 `{"code":200,"message":"请求成功","data":...}`。`pkg/errs` 的错误映射为 HTTP 状态码 + 业务码
 （底层原因是客户端断开导致的 ctx 取消时返回 499 / code 4990，不记 error 日志；超时返回 504 / code 9005）；
 前端只认 HTTP 200 时设置 `http.alwaysOK: true`。
 
-Swagger 注释写在 service 方法上，更新文档（`app.swagger: true` 时访问 `/swagger/index.html`）：
+Swagger 注释写在 Controller 方法上，更新文档（`app.swagger: true` 时访问 `/swagger/index.html`）：
 ```bash
 go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g main.go \
-  -d ./,./app/service,./pkg/httpx,./app/do,./app/modules/mysql/entity -o ./docs --parseInternal
+  -d ./ -o ./docs --parseInternal
 ```
 
 ## 定时任务
 
-任务是一个**持有依赖的普通结构体**，和 router 一样在 `bootstrap.wire` 中注入 service，因此任务里可以直接调用业务方法读写数据库，不需要全局变量，也能像普通对象一样单测：
+任务是一个**持有依赖的普通结构体**，在 `bootstrap.wire` 中注入 Service，因此任务里可以直接调用业务方法读写数据库，不经过 HTTP Controller，也能像普通对象一样单测：
 
 ```go
 // app/daemon_jobs/cron/order.go
@@ -301,7 +323,7 @@ pkg/
 app/
 ├── middlewares/    # request id、链路追踪、访问日志、recovery、body 限制、cors
 ├── router/         # 路由
-├── controller/     # 可选的控制器层
+├── controller/     # HTTP 输入输出、校验、错误映射与 Swagger
 ├── service/        # 业务逻辑
 ├── daemon_jobs/    # 定时任务
 ├── modules/        # mysql（entity、dao）、redis（封装、分布式锁）

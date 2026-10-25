@@ -27,25 +27,6 @@ type {{.N.Pascal}} struct {
 }
 {{range .Actions}}
 // {{.Method}} {{.Summary}}
-//
-//	@Summary	{{.Summary}}
-//	@Tags		{{$.N.Kebab}}
-//	@Produce	json
-{{- if .HasBody}}
-//	@Accept		json
-{{- end}}
-{{- if .HasID}}
-//	@Param		id	path	{{swagType $.IDType}}	true	"ID"
-{{- end}}
-{{- if eq .Kind "list"}}
-//	@Param		page	query	int	false	"页码"
-//	@Param		size	query	int	false	"每页条数"
-{{- end}}
-{{- if .HasBody}}
-//	@Param		body	body	request.{{.Req}}	true	"请求参数"
-{{- end}}
-//	@Success	200	{object}	httpx.Response{data=response.{{.Resp}}}
-//	@Router		{{.SwagPath}} [{{lower .HTTP}}]
 func (s *{{$.N.Pascal}}) {{.Method}}(ctx context.Context, req *request.{{.Req}}) (*response.{{.Resp}}, error) {
 {{- if $.Table}}{{template "tableBody" (wrap $ .)}}{{else}}{{template "skeletonBody" (wrap $ .)}}{{end}}
 }

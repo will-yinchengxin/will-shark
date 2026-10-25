@@ -1,13 +1,4 @@
 definitions:
-  entity.User:
-    properties:
-      age:
-        type: integer
-      id:
-        type: integer
-      name:
-        type: string
-    type: object
   httpx.Response:
     properties:
       code:
@@ -32,6 +23,15 @@ definitions:
     properties:
       acquired:
         type: boolean
+    type: object
+  response.User:
+    properties:
+      age:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
     type: object
 info:
   contact: {}
@@ -58,7 +58,7 @@ paths:
             - $ref: '#/definitions/httpx.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/entity.User'
+                  $ref: '#/definitions/response.User'
               type: object
       summary: 获取App信息
       tags:

@@ -51,7 +51,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/entity.User"
+                                            "$ref": "#/definitions/response.User"
                                         }
                                     }
                                 }
@@ -95,20 +95,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "entity.User": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
         "httpx.Response": {
             "type": "object",
             "properties": {
@@ -143,6 +129,20 @@ const docTemplate = `{
             "properties": {
                 "acquired": {
                     "type": "boolean"
+                }
+            }
+        },
+        "response.User": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         }

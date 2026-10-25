@@ -1,7 +1,7 @@
 // willshark-gen 代码生成器。
 //
-//	go tool willshark-gen module order                                   # router + service + dto（CRUD 骨架）
-//	go tool willshark-gen module order -with all                         # 再加 controller + 定时任务
+//	go tool willshark-gen module order                                   # router + controller + service + dto（CRUD 骨架）
+//	go tool willshark-gen module order -with all                         # 再加定时任务
 //	go tool willshark-gen module order -with service,job -every 10m      # 任意组合
 //	go tool willshark-gen module report -actions export,summary          # 自定义接口
 //	go tool willshark-gen module task -sql sql/tables.sql                # 从建表语句生成完整 CRUD
@@ -25,13 +25,14 @@ const usage = `willshark-gen: 生成 router / controller / service / dto / 定�
   willshark-gen model  -sql <file> [flags]   只生成 entity 与 dao
 
 组件（-with，可任意组合，逗号分隔）:
-  router      路由，挂载到 /v1/<name>
-  controller  控制器（需要直接操作 gin.Context 时使用；不选则路由直接绑定 service）
+  router      路由，挂载到 /v1/<name>，绑定 controller 方法
+  controller  管理 HTTP 参数绑定、校验、错误映射与响应
   service     业务逻辑
   dto         请求/响应结构体（app/do/request, app/do/response）
   job         定时任务（app/daemon_jobs/cron，自动注入同名 service）
   all         以上全部
-  依赖会自动补齐：router/controller → service → dto；已存在且已接入的组件直接复用。
+  默认生成 router,controller,service,dto。
+  依赖会自动补齐：router → controller → service → dto；已存在且已接入的组件直接复用。
 
 示例:
   willshark-gen module order

@@ -131,6 +131,45 @@ func TestAppsEndpoints(t *testing.T) {
 	}
 }
 
+func TestAppsHTTPRoutesUseController(t *testing.T) {
+	app, _ := newTestApp(t, testConfig())
+	found := 0
+	for _, route := range app.Engine.Routes() {
+		if route.Path == "/v1/apps/mysql" || route.Path == "/v1/apps/redis" {
+			found++
+			if !strings.Contains(route.Handler, "/controller.") {
+				t.Errorf("%s %s bypasses controller: %s", route.Method, route.Path, route.Handler)
+			}
+		}
+	}
+	if found != 2 {
+		t.Fatalf("found %d Apps routes, want 2", found)
+	}
+}
+
+func TestAppsControllerRejectsInvalidInputBeforeService(t *testing.T) {
+	cfg := testConfig()
+	cfg.HTTP.MaxBodyBytes = 32
+	app, mock := newTestApp(t, cfg)
+	for _, tc := range []struct {
+		path, body string
+		status     int
+	}{
+		{"/v1/apps/mysql", "{", http.StatusBadRequest},
+		{"/v1/apps/mysql", `{"name":"a","account":"b"}{}`, http.StatusBadRequest},
+		{"/v1/apps/mysql", `{"name":"a","account":"b"}` + strings.Repeat(" ", 100), http.StatusRequestEntityTooLarge},
+		{"/v1/apps/redis", "{", http.StatusBadRequest},
+	} {
+		w, _ := serve(app.Engine, http.MethodPost, tc.path, tc.body)
+		if w.Code != tc.status {
+			t.Errorf("%s status=%d body=%s, want %d", tc.path, w.Code, w.Body.String(), tc.status)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEngineInfraRoutes(t *testing.T) {
 	cfg := testConfig()
 	app, _ := newTestApp(t, cfg)

@@ -12,6 +12,7 @@
 - 修改生成器必须保留 `willshark:gen:*` 插入点，并验证生成后 build、vet、测试及实际 CRUD 行为。
 - 请求参数只能写入显式声明绑定 tag 的字段；路径参数优先。JSON 必须读至 EOF，并保留请求体大小限制。
 - 依赖通过 `bootstrap.New` 创建并按逆序关闭，业务依赖在 `bootstrap.wire` 注入；不增加生产代码中的测试专用接口。
+- 业务 HTTP 固定 Router → Controller → Service → DAO：Router 只注册，Controller 绑定/校验/输出并维护 Swagger，Service 用 context.Context 和 DTO 实现业务；DTO 目录保留 `app/do/request`、`app/do/response`。定时任务直接调用 Service。
 - SQL 查询必须参数化；写后读取走主库；日志不记录真实凭证或原始敏感请求体。
 - 分布式锁只提供 TTL 有效期内的互斥；耗时任务必须响应 context，并为副作用设计幂等。
 - push 需要用户授权；已明确要求 push 时完成验证后普通推送，不强制推送。

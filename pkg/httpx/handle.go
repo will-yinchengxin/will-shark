@@ -22,10 +22,12 @@ type Empty struct{}
 
 // Handle 把强类型的业务函数适配为 gin.HandlerFunc：
 //
-//	g.POST("/task", httpx.Handle(svc.Task.Create))
-//	func (s *Task) Create(ctx context.Context, req *request.CreateTask) (*response.Task, error)
+//	func (c *Task) Create(ctx *gin.Context) {
+//	    httpx.Handle(c.Svc.Create)(ctx)
+//	}
 //
 // 自动完成参数绑定与校验（见 Bind）、错误映射与统一响应输出。
+// 应用路由仍绑定 Controller 方法；Controller 可按需复用本适配器。
 // ctx 为 c.Request.Context()，已包含链路追踪与 request_id。
 func Handle[Req, Resp any](fn func(context.Context, *Req) (*Resp, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
