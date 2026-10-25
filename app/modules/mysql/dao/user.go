@@ -19,3 +19,9 @@ func (u *User) Info(userInfo *entity.User, uid int) error {
 		Where("id = ?", uid).
 		First(userInfo).Error
 }
+
+func (u *User) Count() (int64, error) {
+	var n int64
+	err := u.DB.Model(&entity.User{}).Count(&n).Error
+	return n, err
+}

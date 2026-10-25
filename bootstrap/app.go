@@ -11,15 +11,16 @@ import (
 	"willshark/app/daemon_jobs/cron"
 	"willshark/app/modules/mysql/dao"
 	rc "willshark/app/modules/redis"
+	"willshark/app/modules/redis/lock"
 	"willshark/app/router"
 	"willshark/app/service"
 	"willshark/consts"
 	"willshark/core"
 	"willshark/envconfig/config"
+	"willshark/pkg/scheduler"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 // closeTimeout 单个资源关闭的等待上限
@@ -27,16 +28,16 @@ const closeTimeout = 5 * time.Second
 
 // Infra 基础设施连接，键为配置中的连接名
 type Infra struct {
-	DB    map[string]*gorm.DB
-	Redis map[string]*redis.Client
-	MQ    *core.RocketMQ // rocketmq.enable=false 时为 nil
+	MySQL map[string]*core.MySQLConn       // 已按配置做读写分离，业务使用 .DB
+	Redis map[string]redis.UniversalClient // 单机 / 集群 / 哨兵统一接口
+	MQ    *core.RocketMQ                   // rocketmq.enable=false 时为 nil
 }
 
 type App struct {
-	Config *config.Config
-	Infra  *Infra
-	Engine *gin.Engine
-	Jobs   *cron.Jobs
+	Config    *config.Config
+	Infra     *Infra
+	Engine    *gin.Engine
+	Scheduler *scheduler.Scheduler
 
 	ready atomic.Bool
 }
@@ -57,20 +58,14 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 	}
 	cl.add("tracing", shutdownTracing)
 
-	infra := &Infra{DB: map[string]*gorm.DB{}, Redis: map[string]*redis.Client{}}
+	infra := &Infra{MySQL: map[string]*core.MySQLConn{}, Redis: map[string]redis.UniversalClient{}}
 	for name, c := range cfg.MySQL {
-		db, err := core.NewMySQL(ctx, c)
+		conn, err := core.NewMySQL(ctx, c)
 		if err != nil {
 			return nil, nil, fmt.Errorf("init mysql %s: %w", name, err)
 		}
-		infra.DB[name] = db
-		cl.add("mysql "+name, func(context.Context) error {
-			sqlDB, err := db.DB()
-			if err != nil {
-				return err
-			}
-			return sqlDB.Close()
-		})
+		infra.MySQL[name] = conn
+		cl.add("mysql "+name, func(context.Context) error { return conn.Close() })
 	}
 	for name, c := range cfg.Redis {
 		client, err := core.NewRedis(ctx, c)
@@ -89,7 +84,7 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 		cl.add("rocketmq", mq.Close)
 	}
 
-	db, ok := infra.DB[consts.DB_NAME]
+	db, ok := infra.MySQL[consts.DB_NAME]
 	if !ok {
 		return nil, nil, fmt.Errorf("mysql.%s is not configured", consts.DB_NAME)
 	}
@@ -98,20 +93,9 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 		return nil, nil, fmt.Errorf("redis.%s is not configured", consts.Cache_NAME)
 	}
 
-	// ---- 组装业务依赖 ----
-	rds := &rc.Redis{Cache: cache}
-	userDao := dao.User{MysqlPool: &dao.MysqlPool{DB: db}}
-	routers := &router.Routers{
-		Api: &router.ApiRouter{
-			Apps: &service.Apps{Rds: rds, User: userDao},
-		},
-	}
-
-	app = &App{
-		Config: cfg,
-		Infra:  infra,
-		Jobs:   &cron.Jobs{Rds: rds, User: userDao},
-	}
+	app = &App{Config: cfg, Infra: infra}
+	routers, sched := wire(cfg, &dao.MysqlPool{DB: db.DB}, &rc.Redis{Cache: cache})
+	app.Scheduler = sched
 	app.Engine, err = NewEngine(cfg, app.readiness, routers)
 	if err != nil {
 		return nil, nil, err
@@ -119,17 +103,44 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 	return app, func() { cl.closeAll(closeTimeout) }, nil
 }
 
+// wire 组装业务依赖：dao → service → controller → router / 定时任务。
+// 注释 willshark:gen:* 为代码生成器的插入点，请保留；也可以手动在对应位置添加。
+func wire(cfg *config.Config, pool *dao.MysqlPool, rds *rc.Redis) (*router.Routers, *scheduler.Scheduler) {
+	// ---- dao ----
+	userDao := dao.User{MysqlPool: pool}
+	// willshark:gen:dao
+
+	// ---- service ----
+	appsSvc := &service.Apps{Rds: rds, User: userDao}
+	// willshark:gen:service
+
+	// ---- controller（需要直接操作 gin.Context 时使用，可选）----
+	// willshark:gen:controller
+
+	// ---- router ----
+	routers := &router.Routers{
+		Api: &router.ApiRouter{Apps: appsSvc},
+		// willshark:gen:router
+	}
+
+	// ---- 定时任务：与 router 一样通过字段注入 service ----
+	sched := scheduler.New(
+		scheduler.WithLocker(lock.NewLocker(rds)),
+		scheduler.WithLockPrefix("cron:"+cfg.App.Name+":"),
+	)
+	(&cron.UserStats{Apps: appsSvc}).Register(sched)
+	// willshark:gen:job
+
+	return routers, sched
+}
+
 // readiness 就绪检查：退出中返回错误；依赖不可用返回错误
 func (a *App) readiness(ctx context.Context) error {
 	if !a.ready.Load() {
 		return fmt.Errorf("not ready")
 	}
-	for name, db := range a.Infra.DB {
-		sqlDB, err := db.DB()
-		if err == nil {
-			err = sqlDB.PingContext(ctx)
-		}
-		if err != nil {
+	for name, conn := range a.Infra.MySQL {
+		if err := conn.Ping(ctx); err != nil {
 			return fmt.Errorf("mysql %s: %w", name, err)
 		}
 	}

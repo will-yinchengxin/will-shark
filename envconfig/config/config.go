@@ -69,6 +69,8 @@ type Log struct {
 	Format string `mapstructure:"format"` // json | text
 }
 
+// MySQL 一个逻辑数据库。顶层 host/port 等为主库；
+// 配置 replicas 后读请求走从库（读写分离），配置 sources 后写请求在主库与 sources 间负载（主主/多主）。
 type MySQL struct {
 	Host            string        `mapstructure:"host"`
 	Port            int           `mapstructure:"port"`
@@ -80,13 +82,44 @@ type MySQL struct {
 	ConnMaxLifetime time.Duration `mapstructure:"connMaxLifetime"`
 	ConnMaxIdleTime time.Duration `mapstructure:"connMaxIdleTime"`
 	SlowThreshold   time.Duration `mapstructure:"slowThreshold"` // 慢 SQL 阈值，超过则打 warn 日志
+
+	// Sources 额外的主库（主主/多主）。写请求在 [主库 + sources] 间按 policy 分配；
+	// 多主同时写入需配置 auto_increment_increment/offset 避免主键冲突，通常建议单写。
+	Sources []MySQLNode `mapstructure:"sources"`
+	// Replicas 从库，SELECT 在从库间按 policy 分配；事务、写操作及显式 Master() 走主库
+	Replicas []MySQLNode `mapstructure:"replicas"`
+	Policy   string      `mapstructure:"policy"` // random（默认） | round_robin
 }
 
+// MySQLNode 主从节点；user/password/database 为空时继承主库配置
+type MySQLNode struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Database string `mapstructure:"database"`
+}
+
+// Node 返回主库的节点信息
+func (m MySQL) Node() MySQLNode {
+	return MySQLNode{Host: m.Host, Port: m.Port, User: m.User, Password: m.Password, Database: m.Database}
+}
+
+// Redis 连接模式：
+//   - single（默认）：addr
+//   - cluster：addrs 为集群种子节点（任意部分节点即可），readFromReplica 可让只读命令走从节点
+//   - sentinel：addrs 为哨兵地址，masterName 为主节点名
 type Redis struct {
-	Addr            string        `mapstructure:"addr"`
+	Mode             string   `mapstructure:"mode"`
+	Addr             string   `mapstructure:"addr"`
+	Addrs            []string `mapstructure:"addrs"`
+	MasterName       string   `mapstructure:"masterName"`
+	SentinelPassword string   `mapstructure:"sentinelPassword"`
+	ReadFromReplica  bool     `mapstructure:"readFromReplica"`
+
 	Password        string        `mapstructure:"password"`
-	DB              int           `mapstructure:"db"`
-	PoolSize        int           `mapstructure:"poolSize"` // 0 使用 go-redis 默认值（10 * GOMAXPROCS）
+	DB              int           `mapstructure:"db"`       // cluster 模式只支持 0
+	PoolSize        int           `mapstructure:"poolSize"` // 0 使用 go-redis 默认值（10 * GOMAXPROCS，cluster 为每节点）
 	MinIdleConns    int           `mapstructure:"minIdleConns"`
 	MaxIdleConns    int           `mapstructure:"maxIdleConns"`
 	ConnMaxIdleTime time.Duration `mapstructure:"connMaxIdleTime"`
@@ -94,6 +127,12 @@ type Redis struct {
 	ReadTimeout     time.Duration `mapstructure:"readTimeout"`
 	WriteTimeout    time.Duration `mapstructure:"writeTimeout"`
 }
+
+const (
+	RedisModeSingle   = "single"
+	RedisModeCluster  = "cluster"
+	RedisModeSentinel = "sentinel"
+)
 
 type RocketMQ struct {
 	Enable      bool              `mapstructure:"enable"`
@@ -203,8 +242,39 @@ func (c *Config) fillDefaults() {
 		if m.SlowThreshold == 0 {
 			m.SlowThreshold = 500 * time.Millisecond
 		}
+		if m.Policy == "" {
+			m.Policy = "random"
+		}
+		for i := range m.Sources {
+			m.Sources[i] = m.inherit(m.Sources[i])
+		}
+		for i := range m.Replicas {
+			m.Replicas[i] = m.inherit(m.Replicas[i])
+		}
 		c.MySQL[name] = m
 	}
+	for name, r := range c.Redis {
+		if r.Mode == "" {
+			r.Mode = RedisModeSingle
+		}
+		c.Redis[name] = r
+	}
+}
+
+func (m MySQL) inherit(n MySQLNode) MySQLNode {
+	if n.Port == 0 {
+		n.Port = m.Port
+	}
+	if n.User == "" {
+		n.User = m.User
+	}
+	if n.Password == "" {
+		n.Password = m.Password
+	}
+	if n.Database == "" {
+		n.Database = m.Database
+	}
+	return n
 }
 
 func (c *Config) Validate() error {
@@ -238,13 +308,42 @@ func (c *Config) Validate() error {
 		if m.Host == "" || m.User == "" || m.Database == "" {
 			add("mysql.%s: host, user and database are required", name)
 		}
+		for i, n := range m.Sources {
+			if n.Host == "" {
+				add("mysql.%s.sources[%d].host is required", name, i)
+			}
+		}
+		for i, n := range m.Replicas {
+			if n.Host == "" {
+				add("mysql.%s.replicas[%d].host is required", name, i)
+			}
+		}
+		if m.Policy != "random" && m.Policy != "round_robin" {
+			add("mysql.%s.policy %q must be random or round_robin", name, m.Policy)
+		}
 		durations["mysql."+name+".connMaxLifetime"] = m.ConnMaxLifetime
 		durations["mysql."+name+".connMaxIdleTime"] = m.ConnMaxIdleTime
 		durations["mysql."+name+".slowThreshold"] = m.SlowThreshold
 	}
 	for name, r := range c.Redis {
-		if r.Addr == "" {
-			add("redis.%s.addr is required", name)
+		switch r.Mode {
+		case RedisModeSingle:
+			if r.Addr == "" {
+				add("redis.%s.addr is required in single mode", name)
+			}
+		case RedisModeCluster:
+			if len(r.Addrs) == 0 {
+				add("redis.%s.addrs is required in cluster mode", name)
+			}
+			if r.DB != 0 {
+				add("redis.%s.db must be 0 in cluster mode", name)
+			}
+		case RedisModeSentinel:
+			if len(r.Addrs) == 0 || r.MasterName == "" {
+				add("redis.%s.addrs and masterName are required in sentinel mode", name)
+			}
+		default:
+			add("redis.%s.mode %q must be single, cluster or sentinel", name, r.Mode)
 		}
 		durations["redis."+name+".connMaxIdleTime"] = r.ConnMaxIdleTime
 		durations["redis."+name+".dialTimeout"] = r.DialTimeout

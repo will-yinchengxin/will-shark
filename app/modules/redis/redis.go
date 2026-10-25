@@ -10,7 +10,7 @@ import (
 
 // Redis 对 go-redis 的薄封装，所有方法显式接收 ctx（用于超时控制与链路追踪）
 type Redis struct {
-	Cache *redis.Client
+	Cache redis.UniversalClient
 }
 
 func (r *Redis) Get(ctx context.Context, key string) (string, error) {
@@ -86,6 +86,6 @@ func (r *Redis) Pipeline() redis.Pipeliner {
 	return r.Cache.Pipeline()
 }
 
-func (r *Redis) Client() *redis.Client {
+func (r *Redis) Client() redis.UniversalClient {
 	return r.Cache
 }

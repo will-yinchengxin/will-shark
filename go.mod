@@ -16,6 +16,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.23.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/files v1.0.1
@@ -28,6 +29,7 @@ require (
 	golang.org/x/crypto v0.58.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.2
+	gorm.io/plugin/dbresolver v1.6.2
 )
 
 require (

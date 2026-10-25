@@ -28,7 +28,7 @@ func TestIntegrationWithDockerCompose(t *testing.T) {
 	defer cleanup()
 
 	var charset string
-	if err := app.Infra.DB["willshark"].Raw("SELECT @@character_set_connection").Scan(&charset).Error; err != nil {
+	if err := app.Infra.MySQL["willshark"].DB.Raw("SELECT @@character_set_connection").Scan(&charset).Error; err != nil {
 		t.Fatal(err)
 	}
 	if charset != "utf8mb4" {

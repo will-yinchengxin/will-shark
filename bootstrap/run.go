@@ -39,7 +39,7 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 
 	jobsCtx, stopJobs := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopJobs()
-	a.Jobs.Start(jobsCtx)
+	a.Scheduler.Start(jobsCtx)
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
@@ -75,8 +75,10 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	stopJobs()
 	jobsWaitCtx, cancel := context.WithTimeout(context.Background(), hc.ShutdownTimeout)
 	defer cancel()
-	if err := a.Jobs.Wait(jobsWaitCtx); err != nil {
+	if err := a.Scheduler.Wait(jobsWaitCtx); err != nil {
 		slog.Warn("cron jobs did not stop in time", "err", err)
+	} else {
+		slog.Info("all cron jobs stopped")
 	}
 	return runErr
 }

@@ -12,11 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"willshark/app/daemon_jobs/cron"
 	"willshark/app/modules/mysql/dao"
 	rc "willshark/app/modules/redis"
-	"willshark/app/router"
-	"willshark/app/service"
 	"willshark/core"
 	"willshark/envconfig/config"
 
@@ -61,14 +58,16 @@ func newTestApp(t *testing.T, cfg *config.Config) (*App, sqlmock.Sqlmock) {
 	mr := miniredis.RunT(t)
 	cache := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 
-	rds := &rc.Redis{Cache: cache}
-	userDao := dao.User{MysqlPool: &dao.MysqlPool{DB: db}}
+	conn, err := core.WrapGorm(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	app := &App{
 		Config: cfg,
-		Infra:  &Infra{DB: map[string]*gorm.DB{"willshark": db}, Redis: map[string]*goredis.Client{"willshark": cache}},
-		Jobs:   &cron.Jobs{Rds: rds, User: userDao},
+		Infra:  &Infra{MySQL: map[string]*core.MySQLConn{"willshark": conn}, Redis: map[string]goredis.UniversalClient{"willshark": cache}},
 	}
-	routers := &router.Routers{Api: &router.ApiRouter{Apps: &service.Apps{Rds: rds, User: userDao}}}
+	routers, sched := wire(cfg, &dao.MysqlPool{DB: db}, &rc.Redis{Cache: cache})
+	app.Scheduler = sched
 	app.Engine, err = NewEngine(cfg, app.readiness, routers)
 	if err != nil {
 		t.Fatal(err)

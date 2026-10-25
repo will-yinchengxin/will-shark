@@ -65,3 +65,12 @@ func (a *Apps) Info(ctx context.Context, _ *struct{}) (*response.LockInfo, error
 	}
 	return &response.LockInfo{Acquired: released}, nil
 }
+
+// CountUsers 供定时任务等内部调用
+func (a *Apps) CountUsers(ctx context.Context) (int64, error) {
+	n, err := a.User.WithContext(ctx).Count()
+	if err != nil {
+		return 0, errs.Internal.Wrap(err)
+	}
+	return n, nil
+}

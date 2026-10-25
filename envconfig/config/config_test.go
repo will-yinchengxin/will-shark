@@ -86,7 +86,13 @@ func TestValidation(t *testing.T) {
 	}{
 		"bare number duration": {minimal + "http:\n  readTimeout: 30\n", "durations need a unit"},
 		"mysql missing host":   {"mysql:\n  main:\n    user: u\n    database: d\n", "mysql.main: host, user and database are required"},
-		"redis missing addr":   {"redis:\n  main:\n    db: 1\n", "redis.main.addr is required"},
+		"redis missing addr":   {"redis:\n  main:\n    db: 1\n", "redis.main.addr is required in single mode"},
+		"redis cluster addrs":  {"redis:\n  main:\n    mode: cluster\n", "addrs is required in cluster mode"},
+		"redis cluster db":     {"redis:\n  main:\n    mode: cluster\n    addrs: [a:1]\n    db: 2\n", "db must be 0"},
+		"redis sentinel":       {"redis:\n  main:\n    mode: sentinel\n    addrs: [a:1]\n", "masterName"},
+		"redis bad mode":       {"redis:\n  main:\n    mode: x\n    addr: a:1\n", "mode \"x\""},
+		"replica host":         {"mysql:\n  m:\n    host: h\n    user: u\n    database: d\n    replicas:\n      - port: 3307\n", "replicas[0].host is required"},
+		"bad policy":           {"mysql:\n  m:\n    host: h\n    user: u\n    database: d\n    policy: x\n", "policy"},
 		"tracing endpoint":     {"tracing:\n  enable: true\n", "tracing.endpoint is required"},
 		"bad log level":        {"log:\n  level: verbose\n", "log.level"},
 		"bad sample ratio":     {"tracing:\n  sampleRatio: 2\n", "sampleRatio"},
@@ -151,5 +157,63 @@ func TestRealTopic(t *testing.T) {
 	r := RocketMQ{Topics: map[string]string{"a": "real-a"}}
 	if r.RealTopic("a") != "real-a" || r.RealTopic("b") != "b" {
 		t.Fatal("RealTopic mapping wrong")
+	}
+}
+
+func TestMySQLNodesInheritPrimary(t *testing.T) {
+	c, err := LoadFile("test", writeConfig(t, `
+mysql:
+  main:
+    host: primary
+    port: 3306
+    user: u
+    password: p
+    database: d
+    policy: round_robin
+    sources:
+      - host: primary2
+    replicas:
+      - host: replica1
+        port: 3307
+      - host: replica2
+        user: ro
+        password: rop
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := c.MySQL["main"]
+	if m.Policy != "round_robin" || len(m.Sources) != 1 || len(m.Replicas) != 2 {
+		t.Fatalf("%+v", m)
+	}
+	if s := m.Sources[0]; s.Port != 3306 || s.User != "u" || s.Password != "p" || s.Database != "d" {
+		t.Fatalf("source should inherit primary: %+v", s)
+	}
+	if r := m.Replicas[0]; r.Port != 3307 || r.User != "u" {
+		t.Fatalf("replica1: %+v", r)
+	}
+	if r := m.Replicas[1]; r.User != "ro" || r.Password != "rop" || r.Port != 3306 {
+		t.Fatalf("replica2 should keep own credentials: %+v", r)
+	}
+}
+
+func TestRedisModesAndEnvSlice(t *testing.T) {
+	t.Setenv("WS_REDIS_MAIN_ADDRS", "n1:6379,n2:6379,n3:6379")
+	c, err := LoadFile("test", writeConfig(t, `
+redis:
+  main:
+    mode: cluster
+    addrs: [placeholder:6379]
+  single:
+    addr: 127.0.0.1:6379
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Redis["main"].Addrs; len(got) != 3 || got[2] != "n3:6379" {
+		t.Fatalf("addrs env override = %v", got)
+	}
+	if c.Redis["single"].Mode != RedisModeSingle {
+		t.Fatalf("default mode = %q", c.Redis["single"].Mode)
 	}
 }

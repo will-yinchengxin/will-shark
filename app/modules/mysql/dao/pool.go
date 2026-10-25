@@ -2,12 +2,18 @@ package dao
 
 import (
 	"gorm.io/gorm"
+	"gorm.io/plugin/dbresolver"
 	"willshark/app/do/request"
 	"willshark/consts"
 )
 
 type MysqlPool struct {
 	DB *gorm.DB
+}
+
+// Master 强制走主库（读写分离时用于"写后立即读"等需要强一致的查询）；未配置从库时等同于 DB
+func (p *MysqlPool) Master() *gorm.DB {
+	return p.DB.Clauses(dbresolver.Write)
 }
 
 func Paginate(pageC request.Page) func(db *gorm.DB) *gorm.DB {
