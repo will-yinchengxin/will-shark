@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 	"willshark/pkg/errs"
-	"willshark/utils/validator"
+	"willshark/pkg/validator"
 
 	"github.com/gin-gonic/gin"
 )

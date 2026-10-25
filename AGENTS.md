@@ -3,6 +3,7 @@
 - 使用中文沟通；先阅读实际调用链、配置和测试再修改。保留用户已有改动，不提交真实凭证。
 - Go 最低版本为 `go.mod` 中的补丁版本；不要为运行本项目修改全局 shell 配置。
 - 全部 `*_test.go` 放在 `test/cases/`，按生产包相对路径组织，保留所属包名；夹具放 `test/fixtures/`。
+- 通用能力统一放 `pkg/<能力>/`，不新建根 utils、common 或 pkg/utils 杂项包。职责和迁移表见 `pkg/README.md`；同一文件不要混放日志、密码、时间等不同能力。
 - 执行 `make test` / `make race`，使用 `make vet` 检查含测试的包。直接 `go test ./...` 不会加载集中测试。
 - 整理依赖用 `make tidy`，直接 `go mod tidy` 会遗漏集中测试依赖。
 - 完成代码修改后运行 `make check`；涉及数据库或生成模板时，先 `docker compose up -d --wait`，再 `make integration`。

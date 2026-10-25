@@ -6,6 +6,7 @@
 test/cases/pkg/httpx/httpx_test.go
 test/cases/internal/gen/generator_test.go
 test/cases/bootstrap/integration_test.go
+test/cases/pkg/timex/time_test.go
 ```
 
 这些是包含私有函数测试的同包测试。Go 原生测试要求它们在所属包中编译，因此 `test/run.go` 使用标准 `go -overlay` 在内存中恢复所属路径；磁盘上不生成旁路测试文件、不修改生产源码。`test/go.mod` 隔离测试存储目录，防止 Go 把它当成另一套业务包。
@@ -29,6 +30,7 @@ make fuzz FUZZTIME=10s
 go run ./test/run.go ./pkg/httpx -run TestJSON -count=1 -v
 go run ./test/run.go -list 'Test|Fuzz' ./...
 go run ./test/run.go ./internal/gen -fuzz '^FuzzParseSQL$' -fuzztime=45s -run '^$'
+go run ./test/run.go ./pkg/stringx -fuzz '^FuzzStringHelpers$' -fuzztime=45s -run '^$'
 ```
 
 runner 会在临时目录生成绝对路径 overlay，转交测试退出码，结束后删除临时文件。添加测试时沿用原包的 `package` 名称和相对路径；测试夹具放在 `test/fixtures/`。如 fuzz 发现失败样本，Go 会按原包路径保存 `testdata/fuzz`；应把样本收录为集中测试的种子/夹具，再删除原包中的临时样本目录。

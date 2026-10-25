@@ -282,8 +282,22 @@ test/               # 集中测试、原生 overlay 运行入口（make test / m
 pkg/
 ├── errs/           # 业务错误（业务码 + HTTP 状态码 + 提示 + 内部原因）
 ├── httpx/          # Handle / Bind / OK / Fail
+├── httpclient/     # 出站 HTTP 请求、超时与链路透传
+├── validator/      # 参数校验、中文提示
 ├── logx/           # slog 初始化，从 ctx 提取 trace_id / request_id
-└── scheduler/      # 定时任务调度
+├── scheduler/      # 定时任务调度
+├── syncx/          # goroutine 池、限流信号量、条件通知、原子值
+├── filex/          # 文件与目录
+├── hashx/          # 一致性哈希、摘要与校验和
+├── idgen/          # UUID、Snowflake
+├── randx/          # 随机数、随机字符串
+├── timex/          # 时间转换、区间、时间点补齐
+├── netx/           # IP、网卡
+├── stringx/        # 字符串转换、编码
+├── slicex/         # 切片集合操作
+├── structx/        # 结构体字段复制
+├── mapx/           # map 构造辅助
+└── cryptox/        # 密码哈希、HMAC 签名
 app/
 ├── middlewares/    # request id、链路追踪、访问日志、recovery、body 限制、cors
 ├── router/         # 路由
@@ -295,6 +309,8 @@ app/
 ```
 
 ## 🤝 参与贡献
+
+通用能力统一放在 `pkg/<能力>/`，包职责及旧路径迁移表见 [pkg/README.md](pkg/README.md)。
 
 欢迎提交 Pull Request。
 

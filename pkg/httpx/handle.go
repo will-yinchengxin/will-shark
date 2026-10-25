@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 	"willshark/pkg/errs"
-	"willshark/utils/validator"
+	"willshark/pkg/validator"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"

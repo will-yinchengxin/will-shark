@@ -11,7 +11,7 @@ import (
 	_ "willshark/docs" // swagger 文档
 	"willshark/envconfig/config"
 	"willshark/pkg/httpx"
-	"willshark/utils/validator"
+	"willshark/pkg/validator"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"

@@ -31,6 +31,6 @@ fuzz:
 	go run ./test/run.go ./app/middlewares -run='^$$' -fuzz='^FuzzRedactJSON$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
 	go run ./test/run.go ./app/middlewares -run='^$$' -fuzz='^FuzzValidRequestID$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
 	go run ./test/run.go ./pkg/httpx -run='^$$' -fuzz='^FuzzHandleBind$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
-	go run ./test/run.go ./utils -run='^$$' -fuzz='^FuzzStringHelpers$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
+	go run ./test/run.go ./pkg/stringx -run='^$$' -fuzz='^FuzzStringHelpers$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
 
 check: build vet race
