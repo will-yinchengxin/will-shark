@@ -29,6 +29,8 @@
 - Prometheus metrics
 
 ### Local Development
+> Go >= 1.26.10 is recommended (earlier 1.26.x patch releases have known stdlib vulnerabilities).
+
 ```bash
 docker compose up -d        # MySQL 8 + Redis 7, seeded from sql/init
 go run . dev                # loads envconfig/dev_config.yaml
