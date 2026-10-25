@@ -1,0 +1,33 @@
+// 由 willshark-gen 生成；任务逻辑写在 Run 中。
+
+package cron
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"{{.Module}}/app/service"
+	"{{.Module}}/pkg/scheduler"
+)
+
+// {{.N.Pascal}}Job {{.Summary}}定时任务
+{{- if .JobSvc}}
+type {{.N.Pascal}}Job struct {
+	Svc *service.{{.N.Pascal}} // 由 bootstrap 注入，在 Run 中调用 service 方法读写数据
+}
+{{- else}}
+type {{.N.Pascal}}Job struct{} // 需要读写数据时添加 service 字段，并在 bootstrap.wire 中注入
+{{- end}}
+
+// Register 声明调度方式
+func (j *{{.N.Pascal}}Job) Register(s *scheduler.Scheduler) {
+	{{.JobSchedule}}
+}
+
+// Run 每次调度执行一次；返回的 error 会记录日志
+func (j *{{.N.Pascal}}Job) Run(ctx context.Context) error {
+	// TODO: 实现任务逻辑{{if .JobSvc}}，例如 j.Svc.Xxx(ctx){{end}}
+	slog.InfoContext(ctx, "{{.N.Snake}} job running")
+	return nil
+}

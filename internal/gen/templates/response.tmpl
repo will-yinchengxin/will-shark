@@ -1,0 +1,45 @@
+// 由 willshark-gen 生成，可按需修改。
+
+package response
+
+import (
+	"time"
+
+	"{{.Module}}/app/modules/mysql/entity"
+)
+{{if .NeedItem}}
+// {{.N.Pascal}} {{.Summary}}
+type {{.N.Pascal}} struct {
+{{- if .Table}}
+{{- range .Table.Fields}}
+	{{.Name}} {{.Type}} `json:"{{.JSON}}"`{{if .Comment}} // {{.Comment}}{{end}}
+{{- end}}
+{{- else}}
+	ID   int64  `json:"id"`
+	Name string `json:"name"` // TODO: 按业务修改字段
+{{- end}}
+}
+{{if .Table}}
+// New{{.N.Pascal}} 实体转响应
+func New{{.N.Pascal}}(m *entity.{{.N.Pascal}}) *{{.N.Pascal}} {
+	return &{{.N.Pascal}}{
+{{- range .Table.Fields}}
+		{{.Name}}: m.{{.Name}},
+{{- end}}
+	}
+}
+{{end}}
+{{- end}}
+{{- if .HasList}}
+// {{.N.Pascal}}List {{.Summary}}列表
+type {{.N.Pascal}}List struct {
+	Total int64 `json:"total"`
+	List  []{{.N.Pascal}} `json:"list"`
+}
+{{end}}
+{{- range .Actions}}{{if eq .Kind "custom"}}
+// {{.Resp}} {{.Summary}}结果
+type {{.Resp}} struct {
+	// TODO: 定义响应字段
+}
+{{end}}{{end}}

@@ -47,18 +47,9 @@ func Handle[Req, Resp any](fn func(context.Context, *Req) (*Resp, error)) gin.Ha
 // maxMultipartMemory multipart 表单在内存中保留的上限，超出部分写临时文件
 const maxMultipartMemory = 32 << 20
 
-// Bind 依次绑定路径参数（uri tag）、查询参数（form tag）、请求体（JSON 用 json tag，表单用 form tag），
+// Bind 依次绑定查询参数（form tag）、请求体（JSON 用 json tag，表单用 form tag）、路径参数（uri tag），
 // 最后统一执行一次 binding tag 校验。文件上传等特殊场景请直接使用 gin.Context。
 func Bind(c *gin.Context, obj any) error {
-	if len(c.Params) > 0 {
-		m := make(map[string][]string, len(c.Params))
-		for _, p := range c.Params {
-			m[p.Key] = []string{p.Value}
-		}
-		if err := binding.MapFormWithTag(obj, m, "uri"); err != nil {
-			return errs.InvalidParam.WithMsg("路径参数错误").Wrap(err)
-		}
-	}
 	// 查询参数为空时也要执行，以便应用 form tag 中的 default 值
 	if err := binding.MapFormWithTag(obj, c.Request.URL.Query(), "form"); err != nil {
 		return errs.InvalidParam.WithMsg("查询参数错误").Wrap(err)
@@ -66,6 +57,16 @@ func Bind(c *gin.Context, obj any) error {
 	if hasBody(c.Request) {
 		if err := bindBody(c, obj); err != nil {
 			return err
+		}
+	}
+	// 路径参数最后绑定，保证 /items/:id 中的 id 不会被查询参数或请求体覆盖
+	if len(c.Params) > 0 {
+		m := make(map[string][]string, len(c.Params))
+		for _, p := range c.Params {
+			m[p.Key] = []string{p.Value}
+		}
+		if err := binding.MapFormWithTag(obj, m, "uri"); err != nil {
+			return errs.InvalidParam.WithMsg("路径参数错误").Wrap(err)
 		}
 	}
 	if err := binding.Validator.ValidateStruct(obj); err != nil {

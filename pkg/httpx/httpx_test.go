@@ -171,3 +171,18 @@ func TestDefaultAppliedWithoutQuery(t *testing.T) {
 		t.Fatalf("resp=%+v data=%s", r, data)
 	}
 }
+
+// 路径参数优先于查询参数与请求体
+func TestPathParamWins(t *testing.T) {
+	type req struct {
+		ID   int    `uri:"id" json:"id" binding:"required"`
+		Name string `json:"name" form:"name"`
+	}
+	e := gin.New()
+	var got req
+	e.PUT("/x/:id", Handle(func(_ context.Context, r *req) (*Empty, error) { got = *r; return nil, nil }))
+	call(e, http.MethodPut, "/x/7?ID=99&id=98", "application/json", `{"id":100,"name":"n"}`)
+	if got.ID != 7 || got.Name != "n" {
+		t.Fatalf("got %+v, want path id 7", got)
+	}
+}

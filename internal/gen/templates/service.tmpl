@@ -1,0 +1,142 @@
+// 由 willshark-gen 生成；业务逻辑写在这里。
+
+package service
+
+import (
+	"context"
+	"errors"
+
+	"{{.Module}}/app/do/request"
+	"{{.Module}}/app/do/response"
+	"{{.Module}}/app/modules/mysql/dao"
+	"{{.Module}}/app/modules/mysql/entity"
+	conn "{{.Module}}/app/modules/redis"
+	"{{.Module}}/pkg/errs"
+
+	"gorm.io/gorm"
+)
+
+// {{.N.Pascal}} {{.Summary}}
+type {{.N.Pascal}} struct {
+{{- if .Table}}
+	Dao *dao.{{.N.Pascal}}
+{{- else}}
+	Pool *dao.MysqlPool // 数据库；读写分离时 Pool.Master() 强制走主库
+	Rds  *conn.Redis
+{{- end}}
+}
+{{range .Actions}}
+// {{.Method}} {{.Summary}}
+//
+//	@Summary	{{.Summary}}
+//	@Tags		{{$.N.Kebab}}
+//	@Produce	json
+{{- if .HasBody}}
+//	@Accept		json
+{{- end}}
+{{- if .HasID}}
+//	@Param		id	path	{{swagType $.IDType}}	true	"ID"
+{{- end}}
+{{- if eq .Kind "list"}}
+//	@Param		page	query	int	false	"页码"
+//	@Param		size	query	int	false	"每页条数"
+{{- end}}
+{{- if .HasBody}}
+//	@Param		body	body	request.{{.Req}}	true	"请求参数"
+{{- end}}
+//	@Success	200	{object}	httpx.Response{data=response.{{.Resp}}}
+//	@Router		{{.SwagPath}} [{{lower .HTTP}}]
+func (s *{{$.N.Pascal}}) {{.Method}}(ctx context.Context, req *request.{{.Req}}) (*response.{{.Resp}}, error) {
+{{- if $.Table}}{{template "tableBody" (wrap $ .)}}{{else}}{{template "skeletonBody" (wrap $ .)}}{{end}}
+}
+{{end}}
+{{define "tableBody"}}{{$n := .R.N.Pascal}}
+{{- if eq .A.Kind "list"}}
+	items, total, err := s.Dao.List(ctx, (req.Page-1)*req.Size, req.Size)
+	if err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	list := make([]response.{{$n}}, 0, len(items))
+	for i := range items {
+		list = append(list, *response.New{{$n}}(&items[i]))
+	}
+	return &response.{{$n}}List{Total: total, List: list}, nil
+{{- else if eq .A.Kind "get"}}
+	m, err := s.Dao.Get(ctx, req.ID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errs.NotFound
+	}
+	if err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	return response.New{{$n}}(m), nil
+{{- else if eq .A.Kind "create"}}
+	m := &entity.{{$n}}{
+{{- range .R.Table.Create}}
+		{{.Name}}: req.{{.Name}},
+{{- end}}
+	}
+	if err := s.Dao.Create(ctx, m); err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	return response.New{{$n}}(m), nil
+{{- else if eq .A.Kind "update"}}
+	// 写路径一律读主库，避免主从延迟导致刚创建的数据被判定为不存在
+	if _, err := s.Dao.GetFromMaster(ctx, req.ID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errs.NotFound
+	} else if err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	fields := map[string]any{}
+{{- range .R.Table.Update}}
+	if req.{{.Name}} != nil {
+		fields["{{.Column}}"] = *req.{{.Name}}
+	}
+{{- end}}
+	if len(fields) == 0 {
+		return nil, errs.InvalidParam.WithMsg("没有需要更新的字段")
+	}
+	if err := s.Dao.Update(ctx, req.ID, fields); err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	m, err := s.Dao.GetFromMaster(ctx, req.ID)
+	if err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	return response.New{{$n}}(m), nil
+{{- else if eq .A.Kind "delete"}}
+	n, err := s.Dao.Delete(ctx, req.ID)
+	if err != nil {
+		return nil, errs.Internal.Wrap(err)
+	}
+	if n == 0 {
+		return nil, errs.NotFound
+	}
+	return nil, nil
+{{- else}}
+	// TODO: 实现业务逻辑
+	return &response.{{.A.Resp}}{}, nil
+{{- end}}
+{{- end}}
+
+{{define "skeletonBody"}}{{$n := .R.N.Pascal}}
+{{- if eq .A.Kind "list"}}
+	// TODO: 查询数据，例如 s.Pool.DB.WithContext(ctx).Offset((req.Page-1)*req.Size).Limit(req.Size).Find(&rows)
+	return &response.{{$n}}List{List: []response.{{$n}}{}}, nil
+{{- else if eq .A.Kind "get"}}
+	// TODO: 按 ID 查询；不存在时 return nil, errs.NotFound
+	return &response.{{$n}}{ID: req.ID}, nil
+{{- else if eq .A.Kind "create"}}
+	// TODO: 写入数据
+	return &response.{{$n}}{Name: req.Name}, nil
+{{- else if eq .A.Kind "update"}}
+	// TODO: 更新数据
+	return &response.{{$n}}{ID: req.ID}, nil
+{{- else if eq .A.Kind "delete"}}
+	// TODO: 删除数据；不存在时 return nil, errs.NotFound
+	return nil, nil
+{{- else}}
+	// TODO: 实现业务逻辑
+	return &response.{{.A.Resp}}{}, nil
+{{- end}}
+{{- end}}

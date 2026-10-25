@@ -1,0 +1,62 @@
+// 由 willshark-gen 根据表 {{.Table.Name}} 生成；可在此添加自定义查询。
+
+package dao
+
+import (
+	"context"
+
+	"{{.Module}}/app/modules/mysql/entity"
+
+	"gorm.io/gorm"
+)
+
+// {{.Type}} 表 {{.Table.Name}} 的数据访问
+type {{.Type}} struct {
+	*MysqlPool
+}
+
+func (d *{{.Type}}) Create(ctx context.Context, m *entity.{{.Type}}) error {
+	return d.DB.WithContext(ctx).Create(m).Error
+}
+
+// Get 按主键查询；读写分离时走从库
+func (d *{{.Type}}) Get(ctx context.Context, id {{.IDType}}) (*entity.{{.Type}}, error) {
+	return d.get(ctx, d.DB, id)
+}
+
+// GetFromMaster 按主键从主库查询（写后立即读）
+func (d *{{.Type}}) GetFromMaster(ctx context.Context, id {{.IDType}}) (*entity.{{.Type}}, error) {
+	return d.get(ctx, d.Master(), id)
+}
+
+func (d *{{.Type}}) get(ctx context.Context, db *gorm.DB, id {{.IDType}}) (*entity.{{.Type}}, error) {
+	var m entity.{{.Type}}
+	if err := db.WithContext(ctx).Where("`{{.PKCol}}` = ?", id).First(&m).Error; err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// List 按主键倒序分页，返回当页数据与总数
+func (d *{{.Type}}) List(ctx context.Context, offset, limit int) ([]entity.{{.Type}}, int64, error) {
+	var total int64
+	if err := d.DB.WithContext(ctx).Model(&entity.{{.Type}}{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	items := make([]entity.{{.Type}}, 0, limit)
+	if err := d.DB.WithContext(ctx).Order("`{{.PKCol}}` DESC").Offset(offset).Limit(limit).Find(&items).Error; err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// Update 按主键更新指定列（key 为列名）
+func (d *{{.Type}}) Update(ctx context.Context, id {{.IDType}}, fields map[string]any) error {
+	return d.DB.WithContext(ctx).Model(&entity.{{.Type}}{}).Where("`{{.PKCol}}` = ?", id).Updates(fields).Error
+}
+
+// Delete 按主键删除，返回影响行数
+func (d *{{.Type}}) Delete(ctx context.Context, id {{.IDType}}) (int64, error) {
+	res := d.DB.WithContext(ctx).Where("`{{.PKCol}}` = ?", id).Delete(&entity.{{.Type}}{})
+	return res.RowsAffected, res.Error
+}

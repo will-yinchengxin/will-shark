@@ -145,7 +145,7 @@ func (a *App) readiness(ctx context.Context) error {
 		}
 	}
 	for name, client := range a.Infra.Redis {
-		if err := client.Ping(ctx).Err(); err != nil {
+		if err := core.PingRedis(ctx, client); err != nil {
 			return fmt.Errorf("redis %s: %w", name, err)
 		}
 	}

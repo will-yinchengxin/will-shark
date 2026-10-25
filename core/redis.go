@@ -84,3 +84,16 @@ func NewRedis(ctx context.Context, conf config.Redis) (redis.UniversalClient, er
 	}
 	return client, nil
 }
+
+// PingRedis 健康检查：集群模式检查每个主节点，其余模式 PING
+func PingRedis(ctx context.Context, client redis.UniversalClient) error {
+	if cc, ok := client.(*redis.ClusterClient); ok {
+		return cc.ForEachMaster(ctx, func(ctx context.Context, node *redis.Client) error {
+			if err := node.Ping(ctx).Err(); err != nil {
+				return fmt.Errorf("node %s: %w", node.Options().Addr, err)
+			}
+			return nil
+		})
+	}
+	return client.Ping(ctx).Err()
+}

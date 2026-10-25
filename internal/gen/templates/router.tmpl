@@ -1,0 +1,28 @@
+// 由 willshark-gen 生成，可按需修改。
+
+package router
+
+import (
+	"{{.Module}}/app/controller"
+	"{{.Module}}/app/service"
+	"{{.Module}}/pkg/httpx"
+
+	"github.com/gin-gonic/gin"
+)
+
+// {{.N.Pascal}}Router {{.Summary}}路由
+type {{.N.Pascal}}Router struct {
+{{- if .UseCtl}}
+	Ctl *controller.{{.N.Pascal}}
+{{- else}}
+	Svc *service.{{.N.Pascal}}
+{{- end}}
+}
+
+// Register 挂载到 /v1/{{.N.Kebab}}
+func (r *{{.N.Pascal}}Router) Register(g *gin.RouterGroup) {
+	grp := g.Group("/{{.N.Kebab}}")
+{{- range .Actions}}
+	grp.{{.HTTP}}("{{.Path}}", {{if $.UseCtl}}r.Ctl.{{.Method}}{{else}}httpx.Handle(r.Svc.{{.Method}}){{end}})
+{{- end}}
+}

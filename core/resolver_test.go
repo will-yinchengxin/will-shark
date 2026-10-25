@@ -158,6 +158,9 @@ func TestNewRedisModes(t *testing.T) {
 	if _, ok := cluster.(*redis.ClusterClient); !ok {
 		t.Fatalf("cluster mode should create *redis.ClusterClient, got %T", cluster)
 	}
+	if err := PingRedis(ctx, cluster); err != nil {
+		t.Fatalf("PingRedis cluster: %v", err)
+	}
 
 	if _, err := NewRedis(ctx, config.Redis{Mode: "bogus"}); err == nil {
 		t.Fatal("unknown mode should fail")

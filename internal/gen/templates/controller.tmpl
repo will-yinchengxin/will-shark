@@ -1,0 +1,36 @@
+// 由 willshark-gen 生成，可按需修改。
+
+package controller
+
+import (
+	"{{.Module}}/app/do/request"
+	"{{.Module}}/app/service"
+	"{{.Module}}/pkg/httpx"
+
+	"github.com/gin-gonic/gin"
+)
+
+// {{.N.Pascal}} {{.Summary}}控制器：需要直接操作 gin.Context（header、cookie、文件、流式输出）时在这里处理
+type {{.N.Pascal}} struct {
+	Svc *service.{{.N.Pascal}}
+}
+{{range .Actions}}
+// {{.Method}} {{.HTTP}} {{.SwagPath}}
+func (c *{{$.N.Pascal}}) {{.Method}}(ctx *gin.Context) {
+	var req request.{{.Req}}
+	if err := httpx.Bind(ctx, &req); err != nil {
+		httpx.Fail(ctx, err)
+		return
+	}
+	resp, err := c.Svc.{{.Method}}(ctx.Request.Context(), &req)
+	if err != nil {
+		httpx.Fail(ctx, err)
+		return
+	}
+	if resp == nil {
+		httpx.OK(ctx, nil)
+		return
+	}
+	httpx.OK(ctx, resp)
+}
+{{end}}

@@ -24,9 +24,22 @@ mysql:
     connMaxLifetime: 8h
     connMaxIdleTime: 2h
     slowThreshold: 200ms
+    # 读写分离：配置从库后，非事务 SELECT 走从库；写、事务、Master() 走主库
+    # policy: random            # random | round_robin
+    # replicas:
+    #   - host: 127.0.0.1
+    #     port: 3307            # user/password/database 不填则继承主库
+    # 主主/多主：写请求在主库与 sources 间分配（需配置自增步长避免主键冲突，通常建议单写）
+    # sources:
+    #   - host: 127.0.0.1
+    #     port: 3308
 
 redis:
   willshark:
+    # mode: single（默认）| cluster | sentinel
+    #   cluster:  addrs: [n1:6379, n2:6379, n3:6379]，readFromReplica: true 只读命令走从节点
+    #   sentinel: addrs: [s1:26379, s2:26379]，masterName: mymaster
+    mode: single
     addr: 127.0.0.1:6379
     password: ""
     db: 0

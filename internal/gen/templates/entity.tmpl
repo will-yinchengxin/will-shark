@@ -1,0 +1,14 @@
+// 由 willshark-gen 根据表 {{.Table.Name}} 生成；表结构变更后可用 -force 重新生成。
+
+package entity
+
+import "time"
+
+// {{.Type}} {{if .Table.Comment}}{{.Table.Comment}}{{else}}表 {{.Table.Name}}{{end}}
+type {{.Type}} struct {
+{{- range .Table.Fields}}
+	{{.Name}} {{.Type}} `gorm:"{{.GormTag}}" json:"{{.JSON}}"`{{if .Comment}} // {{.Comment}}{{end}}
+{{- end}}
+}
+
+func (*{{.Type}}) TableName() string { return "{{.Table.Name}}" }
