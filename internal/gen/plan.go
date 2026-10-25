@@ -3,6 +3,7 @@ package gen
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -86,6 +87,9 @@ func (p *Plan) Apply(w io.Writer, force, dryRun bool) error {
 	if len(conflicts) > 0 {
 		return fmt.Errorf("files already exist (use -force to overwrite):\n  %s", strings.Join(conflicts, "\n  "))
 	}
+	if err := p.checkRedeclared(); err != nil {
+		return err
+	}
 
 	// 先在内存中完成所有编辑，任何一步失败都不落盘
 	edited := map[string][]byte{}
@@ -126,15 +130,15 @@ func (p *Plan) Apply(w io.Writer, force, dryRun bool) error {
 
 	for _, c := range p.creates {
 		abs := p.gen.path(c.rel)
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil { // #nosec G301 -- 生成的源码目录需对团队可读，与 git 检出的目录权限一致
 			return err
 		}
-		if err := os.WriteFile(abs, c.content, 0o644); err != nil {
+		if err := os.WriteFile(abs, c.content, 0o644); err != nil { // #nosec G306 -- 生成的是源码文件，权限与仓库中其他源码一致（0644）
 			return err
 		}
 	}
 	for rel, out := range edited {
-		if err := os.WriteFile(p.gen.path(rel), out, 0o644); err != nil {
+		if err := os.WriteFile(p.gen.path(rel), out, 0o644); err != nil { // #nosec G306 -- 修改的是已存在的源码文件，权限与仓库中其他源码一致（0644）
 			return err
 		}
 	}
@@ -193,4 +197,103 @@ func (p *Plan) applyEdit(e *fileEdit) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("%s: generated code does not parse: %w", e.rel, err)
 	}
 	return formatted, added, nil
+}
+
+// checkRedeclared 新文件中的包级标识符不能与同一目录（同一包）中其他文件重复，否则生成后无法编译，
+// 例如 module empty 生成的 response.Empty 与 app/do/response/common.go 冲突。
+func (p *Plan) checkRedeclared() error {
+	byDir := map[string]map[string][]byte{} // dir → rel → content（新建的文件）
+	for _, c := range p.creates {
+		if strings.HasSuffix(c.rel, ".go") {
+			dir := filepath.Dir(c.rel)
+			if byDir[dir] == nil {
+				byDir[dir] = map[string][]byte{}
+			}
+			byDir[dir][c.rel] = c.content
+		}
+	}
+	var problems []string
+	for dir, created := range byDir {
+		owner := map[string]string{} // 标识符 → 声明它的文件
+		record := func(rel string, src []byte, isNew bool) error {
+			names, err := topLevelNames(rel, src)
+			if err != nil {
+				return err
+			}
+			for _, n := range names {
+				if prev, dup := owner[n]; dup && (isNew || created[prev] != nil) {
+					problems = append(problems, fmt.Sprintf("%s: %s already declared in %s", rel, n, prev))
+					continue
+				}
+				owner[n] = rel
+			}
+			return nil
+		}
+		entries, _ := os.ReadDir(p.gen.path(dir))
+		for _, e := range entries {
+			rel := filepath.ToSlash(filepath.Join(dir, e.Name()))
+			if e.IsDir() || !strings.HasSuffix(rel, ".go") || created[rel] != nil {
+				continue // 将被覆盖的文件以新内容为准
+			}
+			src, err := os.ReadFile(p.gen.path(rel))
+			if err != nil {
+				return err
+			}
+			if err := record(rel, src, false); err != nil {
+				return err
+			}
+		}
+		rels := make([]string, 0, len(created))
+		for rel := range created {
+			rels = append(rels, rel)
+		}
+		slices.Sort(rels)
+		for _, rel := range rels {
+			if err := record(rel, created[rel], true); err != nil {
+				return err
+			}
+		}
+	}
+	if len(problems) > 0 {
+		slices.Sort(problems)
+		return fmt.Errorf("generated code would not compile (choose another module name):\n  %s", strings.Join(problems, "\n  "))
+	}
+	return nil
+}
+
+// topLevelNames 文件中的包级类型、变量、常量、函数名（不含方法；_test 外部测试包返回空）
+func topLevelNames(rel string, src []byte) ([]string, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", rel, err)
+	}
+	if strings.HasSuffix(f.Name.Name, "_test") {
+		return nil, nil
+	}
+	var names []string
+	add := func(n string) {
+		if n != "_" && n != "init" {
+			names = append(names, n)
+		}
+	}
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ast.FuncDecl:
+			if d.Recv == nil {
+				add(d.Name.Name)
+			}
+		case *ast.GenDecl:
+			for _, spec := range d.Specs {
+				switch sp := spec.(type) {
+				case *ast.TypeSpec:
+					add(sp.Name.Name)
+				case *ast.ValueSpec:
+					for _, n := range sp.Names {
+						add(n.Name)
+					}
+				}
+			}
+		}
+	}
+	return names, nil
 }

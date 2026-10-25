@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"go.opentelemetry.io/otel/trace"
@@ -35,7 +36,7 @@ func New(w io.Writer, level, format string, attrs ...any) *slog.Logger {
 	} else {
 		h = slog.NewJSONHandler(w, opts)
 	}
-	return slog.New(contextHandler{h}).With(attrs...)
+	return slog.New(contextHandler{Handler: h, root: h}).With(attrs...)
 }
 
 // Setup 创建 logger 并设为全局默认（同时接管标准库 log 包的输出）
@@ -58,25 +59,60 @@ func ParseLevel(level string) slog.Level {
 	}
 }
 
-// contextHandler 从 ctx 中提取 trace/request 信息附加到日志
-type contextHandler struct{ slog.Handler }
+// contextHandler 从 ctx 中提取 trace/request 信息附加到日志。
+// 这些字段始终位于顶层：logger.WithGroup("db") 之后也不会变成 db.trace_id，便于按 trace_id 检索。
+type contextHandler struct {
+	slog.Handler                                   // 已应用全部 WithAttrs / WithGroup
+	root         slog.Handler                      // 第一次 WithGroup 之前的 handler
+	steps        []func(slog.Handler) slog.Handler // root 之后依次应用的 WithGroup / WithAttrs
+}
 
 func (h contextHandler) Handle(ctx context.Context, r slog.Record) error {
-	if ctx != nil {
-		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
-			r.AddAttrs(slog.String("trace_id", sc.TraceID().String()), slog.String("span_id", sc.SpanID().String()))
-		}
-		if id := RequestID(ctx); id != "" {
-			r.AddAttrs(slog.String("request_id", id))
-		}
+	attrs := contextAttrs(ctx)
+	if len(attrs) == 0 {
+		return h.Handler.Handle(ctx, r)
 	}
-	return h.Handler.Handle(ctx, r)
+	if len(h.steps) == 0 {
+		r.AddAttrs(attrs...)
+		return h.Handler.Handle(ctx, r)
+	}
+	// 有分组时把上下文字段加在分组之前，再重放分组与属性
+	hh := h.root.WithAttrs(attrs)
+	for _, step := range h.steps {
+		hh = step(hh)
+	}
+	return hh.Handle(ctx, r)
+}
+
+func contextAttrs(ctx context.Context) []slog.Attr {
+	if ctx == nil {
+		return nil
+	}
+	var attrs []slog.Attr
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		attrs = append(attrs, slog.String("trace_id", sc.TraceID().String()), slog.String("span_id", sc.SpanID().String()))
+	}
+	if id := RequestID(ctx); id != "" {
+		attrs = append(attrs, slog.String("request_id", id))
+	}
+	return attrs
 }
 
 func (h contextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return contextHandler{h.Handler.WithAttrs(attrs)}
+	if len(h.steps) == 0 {
+		next := h.Handler.WithAttrs(attrs)
+		return contextHandler{Handler: next, root: next}
+	}
+	return h.with(func(x slog.Handler) slog.Handler { return x.WithAttrs(attrs) })
 }
 
 func (h contextHandler) WithGroup(name string) slog.Handler {
-	return contextHandler{h.Handler.WithGroup(name)}
+	if name == "" {
+		return h
+	}
+	return h.with(func(x slog.Handler) slog.Handler { return x.WithGroup(name) })
+}
+
+func (h contextHandler) with(step func(slog.Handler) slog.Handler) contextHandler {
+	return contextHandler{Handler: step(h.Handler), root: h.root, steps: append(slices.Clip(h.steps), step)}
 }

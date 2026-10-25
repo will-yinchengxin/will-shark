@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
+	"strings"
+	"sync"
 	"willshark/pkg/errs"
 	"willshark/utils/validator"
 
@@ -49,9 +52,12 @@ const maxMultipartMemory = 32 << 20
 
 // Bind 依次绑定查询参数（form tag）、请求体（JSON 用 json tag，表单用 form tag）、路径参数（uri tag），
 // 最后统一执行一次 binding tag 校验。文件上传等特殊场景请直接使用 gin.Context。
+//
+// 查询参数、表单与路径参数只绑定显式声明了对应 tag 的字段。gin 默认会把没有 tag 的字段按字段名绑定，
+// 例如 `IsAdmin bool json:"-"` 可被 ?IsAdmin=true 赋值，这里过滤掉以免请求覆盖内部字段。
 func Bind(c *gin.Context, obj any) error {
 	// 查询参数为空时也要执行，以便应用 form tag 中的 default 值
-	if err := binding.MapFormWithTag(obj, c.Request.URL.Query(), "form"); err != nil {
+	if err := mapTagged(obj, c.Request.URL.Query(), "form"); err != nil {
 		return errs.InvalidParam.WithMsg("查询参数错误").Wrap(err)
 	}
 	if hasBody(c.Request) {
@@ -65,7 +71,7 @@ func Bind(c *gin.Context, obj any) error {
 		for _, p := range c.Params {
 			m[p.Key] = []string{p.Value}
 		}
-		if err := binding.MapFormWithTag(obj, m, "uri"); err != nil {
+		if err := mapTagged(obj, m, "uri"); err != nil {
 			return errs.InvalidParam.WithMsg("路径参数错误").Wrap(err)
 		}
 	}
@@ -85,7 +91,18 @@ func hasBody(r *http.Request) bool {
 func bindBody(c *gin.Context, obj any) error {
 	switch ct := c.ContentType(); ct {
 	case binding.MIMEJSON, "":
-		if err := json.NewDecoder(c.Request.Body).Decode(obj); err != nil && !errors.Is(err, io.EOF) {
+		dec := json.NewDecoder(c.Request.Body)
+		if err := dec.Decode(obj); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return bodyError(err)
+		}
+		// 必须读到 EOF：拒绝第二个 JSON 值、尾部垃圾，并让尾部字节也受 BodyLimit 约束。
+		if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
+			if err == nil {
+				return errs.InvalidParam.WithMsg("请求体只能包含一个 JSON 值")
+			}
 			return bodyError(err)
 		}
 	case binding.MIMEPOSTForm, binding.MIMEMultipartPOSTForm:
@@ -98,13 +115,97 @@ func bindBody(c *gin.Context, obj any) error {
 		if err != nil {
 			return bodyError(err)
 		}
-		if err := binding.MapFormWithTag(obj, c.Request.PostForm, "form"); err != nil {
+		if err := mapTagged(obj, c.Request.PostForm, "form"); err != nil {
 			return errs.InvalidParam.WithMsg("表单参数错误").Wrap(err)
 		}
 	default:
 		return errs.InvalidParam.WithMsg("不支持的 Content-Type: " + ct)
 	}
 	return nil
+}
+
+// mapTagged 逐字段绑定显式声明的 tag。仅过滤输入键不够：未打 tag 的字段可能
+// 与其他字段的 tag 同名，gin 仍会按字段名将它赋值。
+func mapTagged(obj any, values map[string][]string, tag string) error {
+	t := reflect.TypeOf(obj)
+	if t == nil {
+		return fmt.Errorf("binding target is nil")
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct { // 例如绑定到 map[string]string：接收全部键
+		return binding.MapFormWithTag(obj, values, tag)
+	}
+	_, err := mapTaggedValue(reflect.ValueOf(obj), values, tag, map[reflect.Type]bool{})
+	return err
+}
+
+var taggedFieldTypes sync.Map // tagCacheKey → 单字段绑定结构体类型
+
+type tagCacheKey struct {
+	t    reflect.Type
+	tag  reflect.StructTag
+	name string
+}
+
+func mapTaggedValue(v reflect.Value, values map[string][]string, tag string, seen map[reflect.Type]bool) (bool, error) {
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			if !v.CanSet() {
+				return false, fmt.Errorf("binding target is nil")
+			}
+			next := reflect.New(v.Type().Elem())
+			changed, err := mapTaggedValue(next.Elem(), values, tag, seen)
+			if changed && err == nil {
+				v.Set(next)
+			}
+			return changed, err
+		}
+		return mapTaggedValue(v.Elem(), values, tag, seen)
+	}
+	if v.Kind() != reflect.Struct || seen[v.Type()] {
+		return false, nil
+	}
+	t := v.Type()
+	seen[t] = true
+	defer delete(seen, t)
+	changed := false
+	for i := range t.NumField() {
+		f := t.Field(i)
+		fv := v.Field(i)
+		rawTag, explicit := f.Tag.Lookup(tag)
+		name, opts, _ := strings.Cut(rawTag, ",")
+		if !fv.CanSet() || name == "-" {
+			continue
+		}
+		if explicit && name == "" {
+			name = f.Name
+		}
+		_, present := values[name]
+		if name != "" && (present || strings.Contains(opts, "default=")) {
+			key := tagCacheKey{f.Type, f.Tag, f.Name}
+			st, ok := taggedFieldTypes.Load(key)
+			if !ok {
+				st = reflect.StructOf([]reflect.StructField{{Name: f.Name, Type: f.Type, Tag: f.Tag}})
+				taggedFieldTypes.Store(key, st)
+			}
+			one := reflect.New(st.(reflect.Type))
+			one.Elem().Field(0).Set(fv)
+			if err := binding.MapFormWithTag(one.Interface(), values, tag); err != nil {
+				return false, err
+			}
+			fv.Set(one.Elem().Field(0))
+			changed = true
+			continue
+		}
+		nested, err := mapTaggedValue(fv, values, tag, seen)
+		if err != nil {
+			return false, err
+		}
+		changed = changed || nested
+	}
+	return changed, nil
 }
 
 func bodyError(err error) error {

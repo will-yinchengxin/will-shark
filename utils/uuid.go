@@ -6,25 +6,25 @@ import (
 )
 
 const (
-	ProUuidJoinChar = "-"
+	ProUUIDJoinChar = "-"
 )
 
-func GetProUuid(prefix ...string) (kisId string) {
-	idStr := strings.Replace(uuid.New().String(), ProUuidJoinChar, "", -1)
-	kisId = formatProID(idStr, prefix...)
+func GetProUUID(prefix ...string) (kisID string) {
+	idStr := strings.Replace(uuid.New().String(), ProUUIDJoinChar, "", -1)
+	kisID = formatProID(idStr, prefix...)
 
 	return
 }
 
 func formatProID(idStr string, prefix ...string) string {
-	var kisId string
+	var kisID string
 
 	for _, fix := range prefix {
-		kisId += fix
-		kisId += ProUuidJoinChar
+		kisID += fix
+		kisID += ProUUIDJoinChar
 	}
 
-	kisId += idStr
+	kisID += idStr
 
-	return kisId
+	return kisID
 }

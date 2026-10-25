@@ -15,8 +15,9 @@ type {{.Type}} struct {
 	*MysqlPool
 }
 
-func (d *{{.Type}}) Create(ctx context.Context, m *entity.{{.Type}}) error {
-	return d.DB.WithContext(ctx).Create(m).Error
+// omit 为未传入且需要由数据库应用 DEFAULT 的列。
+func (d *{{.Type}}) Create(ctx context.Context, m *entity.{{.Type}}, omit ...string) error {
+	return d.DB.WithContext(ctx).Omit(omit...).Create(m).Error
 }
 
 // Get 按主键查询；读写分离时走从库

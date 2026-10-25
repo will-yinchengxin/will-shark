@@ -1,0 +1,47 @@
+package bootstrap
+
+import (
+    "context"
+    "net/http"
+    "strings"
+    "testing"
+    "willshark/envconfig/config"
+)
+
+func TestIntegrationGeneratedCRUD(t *testing.T) {
+    t.Setenv(config.EnvConfigDir, "../envconfig")
+    cfg, err := config.Load("dev")
+    if err != nil { t.Fatal(err) }
+    app, cleanup, err := New(context.Background(), cfg)
+    if err != nil { t.Fatal(err) }
+    defer cleanup()
+    db := app.Infra.MySQL["willshark"].DB
+    // 不覆盖既存表；只删除本测试成功创建的表。
+    if err := db.Exec("CREATE TABLE ws_gen_crud_probe (code varchar(24) NOT NULL PRIMARY KEY, title varchar(50) NOT NULL, status int NOT NULL, balance decimal(10,2) NOT NULL, attempts int NOT NULL DEFAULT 18, enabled boolean NOT NULL)").Error; err != nil { t.Fatal(err) }
+    defer func() { if err := db.Exec("DROP TABLE ws_gen_crud_probe").Error; err != nil { t.Error(err) } }()
+    if err := db.Exec("CREATE TABLE ws_gen_int_probe (id bigint NOT NULL PRIMARY KEY, title varchar(50) NOT NULL)").Error; err != nil { t.Fatal(err) }
+    defer func() { if err := db.Exec("DROP TABLE ws_gen_int_probe").Error; err != nil { t.Error(err) } }()
+    check := func(method, path, body string, status int, contains string) {
+        t.Helper()
+        w, _ := serve(app.Engine, method, path, body)
+        if w.Code != status || !strings.Contains(w.Body.String(), contains) {
+            t.Fatalf("%s %s: status=%d body=%s; want %d containing %q", method, path, w.Code, w.Body.String(), status, contains)
+        }
+    }
+    check(http.MethodPost, "/v1/ticketprobe", `{"title":"first","status":0,"balance":"12.34"}`, 400, `code`)
+    check(http.MethodPost, "/v1/ticketprobe", `{"code":"missing-bool","title":"first","status":0,"balance":"12.34"}`, 400, `enabled`)
+    check(http.MethodPost, "/v1/ticketprobe", `{"code":"ticket-42","title":"first","status":0,"balance":"12.34","enabled":false}`, 200, `"attempts":18`)
+    check(http.MethodGet, "/v1/ticketprobe/ticket-42", "", 200, `"balance":"12.34"`)
+    check(http.MethodGet, "/v1/ticketprobe", "", 200, `"total":1`)
+    check(http.MethodGet, "/v1/ticketprobe/x%27%20OR%20%271%27=%271", "", 404, `"code":9004`)
+    check(http.MethodPut, "/v1/ticketprobe/ticket-42", `{"title":"changed","status":0}`, 200, `"title":"changed"`)
+    check(http.MethodDelete, "/v1/ticketprobe/ticket-42", "", 200, `"code":200`)
+    check(http.MethodGet, "/v1/ticketprobe/ticket-42", "", 404, `"code":9004`)
+    check(http.MethodDelete, "/v1/ticketprobe/ticket-42", "", 404, `"code":9004`)
+    check(http.MethodPost, "/v1/ticketprobe", `{"code":"explicit-zero","title":"first","status":0,"balance":"12.34","attempts":0,"enabled":false}`, 200, `"attempts":0`)
+    check(http.MethodGet, "/v1/ticketprobe/explicit-zero", "", 200, `"attempts":0`)
+    check(http.MethodPost, "/v1/intprobe", `{"id":0,"title":"zero"}`, 200, `"id":0`)
+    check(http.MethodGet, "/v1/intprobe/0", "", 200, `"title":"zero"`)
+    check(http.MethodPut, "/v1/intprobe/0", `{"title":"updated zero"}`, 200, `"title":"updated zero"`)
+    check(http.MethodDelete, "/v1/intprobe/0", "", 200, `"code":200`)
+}

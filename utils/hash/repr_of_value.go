@@ -7,11 +7,17 @@ import (
 )
 
 func ReprOfValue(value any) string {
+	// 在解引用指针之前判断接口，指针接收者实现的 Stringer / error 才能生效
 	switch vt := value.(type) {
 	case fmt.Stringer:
 		return vt.String()
+	case error:
+		return vt.Error()
 	}
 	val := reflect.ValueOf(value)
+	if !val.IsValid() { // value 为 nil
+		return ""
+	}
 	for val.Kind() == reflect.Ptr && !val.IsNil() {
 		val = val.Elem()
 	}

@@ -7,11 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ApiRouter struct {
+type APIRouter struct {
 	Apps *service.Apps
 }
 
-func (api *ApiRouter) Initialize(engine *gin.Engine) {
+func (api *APIRouter) Initialize(engine *gin.Engine) {
 	v1 := engine.Group("v1")
 	{
 		apps := v1.Group("apps")

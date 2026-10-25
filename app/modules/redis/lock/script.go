@@ -14,7 +14,3 @@ else
     return 0
 end`
 )
-
-const (
-	UserInfo = "User_Info_Lock_Key"
-)

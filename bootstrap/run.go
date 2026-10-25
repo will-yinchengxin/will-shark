@@ -13,7 +13,7 @@ import (
 
 // Run 监听配置端口并阻塞，直到 ctx 取消（收到退出信号）或服务出错
 func (a *App) Run(ctx context.Context) error {
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(a.Config.HTTP.Port))
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(a.Config.HTTP.Port)) // #nosec G102 -- 服务需在容器内对外提供 HTTP，监听所有网卡是预期行为
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -44,7 +44,7 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 	a.ready.Store(true)
-	slog.Info("http server started", "addr", ln.Addr().String(), "env", a.Config.App.Env)
+	slog.Info("http server started", "addr", ln.Addr().String())
 
 	var runErr error
 	select {
@@ -63,6 +63,8 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), hc.ShutdownTimeout)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
+			// 超时仍有在途请求：强制断开，避免它们在随后关闭数据库连接后继续执行
+			_ = srv.Close()
 			runErr = fmt.Errorf("http shutdown: %w", err)
 		} else {
 			slog.Info("http server stopped")

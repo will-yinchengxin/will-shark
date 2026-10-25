@@ -1,64 +1,49 @@
 package validator
 
 import (
-	"github.com/go-playground/validator/v10"
+	"net/url"
 	"regexp"
-	"time"
+
+	"github.com/go-playground/validator/v10"
+)
+
+var (
+	phoneRe       = regexp.MustCompile(`^1[0-9]{10}$`)
+	nonASCIIRe    = regexp.MustCompile(`[^\x00-\xff]`)
+	spaceRe       = regexp.MustCompile(`\s`)
+	digitRe       = regexp.MustCompile(`[0-9]`)
+	letterRe      = regexp.MustCompile(`[a-zA-Z]`)
+	specialCharRe = regexp.MustCompile(`[^a-zA-Z0-9]`)
 )
 
 func Phone(f validator.FieldLevel) bool {
-	val := f.Field().String()
-	if ok, _ := regexp.MatchString(`^1[0-9]{10}$`, val); !ok {
-		return false
-	}
-	return true
+	return phoneRe.MatchString(f.Field().String())
 }
 
+// Password 不含中文与空白，且数字、字母、特殊字符至少包含两种；长度请配合 min/max 规则
 func Password(f validator.FieldLevel) bool {
 	val := f.Field().String()
-	if ok, _ := regexp.MatchString(`[^\x00-\xff]`, val); ok {
+	if nonASCIIRe.MatchString(val) || spaceRe.MatchString(val) {
 		return false
 	}
-	if ok, _ := regexp.MatchString(`\s`, val); ok {
-		return false
-	}
-
 	num := 0
-	if ok, _ := regexp.MatchString(`[0-9]`, val); ok { //数字命中
-		num++
+	for _, re := range []*regexp.Regexp{digitRe, letterRe, specialCharRe} {
+		if re.MatchString(val) {
+			num++
+		}
 	}
-	if ok, _ := regexp.MatchString(`[a-zA-Z]`, val); ok { //字母命中
-		num++
-	}
-	if ok, _ := regexp.MatchString(`[^A-z0-9]`, val); ok { //特殊符号命中
-		num++
-	}
-	if num < 2 { //命中少于两次 返回错误
-		return false
-	}
-
-	return true
+	return num >= 2
 }
 
-// CheckUrl url checker
-func CheckUrl(f validator.FieldLevel) bool {
-	val := f.Field().String()
-	urlPartten := "^(http|https|ftp)\\://([a-zA-Z0-9\\.\\-]+(\\:[a-zA-Z0-9\\.&amp;%\\$\\-]+)*@)*((25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|[1-9])\\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|[1-9]|0)\\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|[1-9]|0)\\.(25[0-5]|2[0-4][0-9]|[0-1]{1}[0-9]{2}|[1-9]{1}[0-9]{1}|[0-9])|localhost|([a-zA-Z0-9\\-]+\\.)*[a-zA-Z0-9\\-]+\\.(com|edu|gov|int|mil|net|org|biz|arpa|info|name|pro|aero|coop|museum|[a-zA-Z]{2}))(\\:[0-9]+)*(/($|[a-zA-Z0-9\\.\\,\\?\\'\\\\\\+&amp;%\\$#\\=~_\\-]+))*$"
-	if ok, _ := regexp.MatchString(urlPartten, val); ok {
+// CheckURL 校验 http / https / ftp 绝对地址（必须带主机名）
+func CheckURL(f validator.FieldLevel) bool {
+	u, err := url.Parse(f.Field().String())
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "http", "https", "ftp":
 		return true
 	}
 	return false
-}
-
-func UnixTime(f validator.FieldLevel) bool {
-	t := f.Field().Int()
-	format := "2006-01-02 15:04:05"
-	pt, err := time.ParseInLocation(format, time.Unix(t, 0).Format(format), time.Local)
-	if err != nil {
-		return false
-	}
-	if pt.Unix() != t {
-		return false
-	}
-	return true
 }

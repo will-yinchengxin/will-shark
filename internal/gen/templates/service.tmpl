@@ -73,11 +73,29 @@ func (s *{{$.N.Pascal}}) {{.Method}}(ctx context.Context, req *request.{{.Req}})
 {{- else if eq .A.Kind "create"}}
 	m := &entity.{{$n}}{
 {{- range .R.Table.Create}}
-		{{.Name}}: req.{{.Name}},
+	{{- if not .HasDefault}}
+		{{.Name}}: {{if .CreateDeref}}*{{end}}req.{{.Name}},
+	{{- end}}
 {{- end}}
 	}
-	if err := s.Dao.Create(ctx, m); err != nil {
+	var omit []string
+{{- range .R.Table.Create}}
+{{- if .HasDefault}}
+	if req.{{.Name}} == nil {
+		omit = append(omit, "{{.Column}}")
+	} else {
+		m.{{.Name}} = {{if .CreateDeref}}*{{end}}req.{{.Name}}
+	}
+{{- end}}
+{{- end}}
+	if err := s.Dao.Create(ctx, m, omit...); err != nil {
 		return nil, errs.Internal.Wrap(err)
+	}
+	if len(omit) > 0 {
+		// 回读实际 DEFAULT（含表达式），保证响应与数据库一致。
+		stored, err := s.Dao.GetFromMaster(ctx, m.{{.R.Table.PK.Name}})
+		if err != nil { return nil, errs.Internal.Wrap(err) }
+		m = stored
 	}
 	return response.New{{$n}}(m), nil
 {{- else if eq .A.Kind "update"}}

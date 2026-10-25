@@ -1,3 +1,4 @@
+// Package core 基础设施连接：MySQL（读写分离 / 多主）、Redis（单机 / 集群 / 哨兵）、RocketMQ、OpenTelemetry 链路追踪。
 package core
 
 import (
@@ -212,7 +213,11 @@ func before(db *gorm.DB) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, span := otel.Tracer("gorm").Start(ctx, db.Statement.Table)
+	name := db.Statement.Table
+	if name == "" { // Raw / Exec 等没有表名时，避免空 span 名
+		name = "gorm"
+	}
+	_, span := otel.Tracer("gorm").Start(ctx, name)
 	db.InstanceSet(consts.JaegerStartTime, time.Now())
 	db.InstanceSet(consts.JaegerGormSpanKey, span)
 }

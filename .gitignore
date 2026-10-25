@@ -2,4 +2,9 @@
 .DS_Store
 vendor/
 tests/
+coverage.out
+*.log
+!/test/
+!/test/**
+.claude
 *.log

@@ -1,11 +1,11 @@
 package file
 
-import "io/ioutil"
+import "os"
 
 // ReadFileToBytes reads data type '[]byte' from file by given path.
 // It returns error when fail to finish operation.
 func ReadFileToBytes(filePath string) ([]byte, error) {
-	b, err := ioutil.ReadFile(filePath)
+	b, err := os.ReadFile(filePath) // #nosec G304 -- 通用文件工具，路径由调用方决定
 	if err != nil {
 		return []byte(""), err
 	}

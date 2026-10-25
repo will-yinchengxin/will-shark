@@ -11,7 +11,7 @@ services:
       TZ: Asia/Shanghai
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"   # 只监听本机，避免把弱口令数据库暴露到局域网
     volumes:
       - ./sql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -22,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # Redis 无密码，只监听本机
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s

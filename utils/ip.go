@@ -37,10 +37,7 @@ func ValidateIP(ip string) bool {
 			return false
 		}
 		_, _, err := net.ParseCIDR(ip)
-		if err != nil {
-			return false
-		}
-		return true
+		return err == nil
 	}
 
 	// 检查是否为范围格式
@@ -60,7 +57,7 @@ func ValidateIP(ip string) bool {
 	return false
 }
 
-func InternalIp() string {
+func InternalIP() string {
 	infs, err := net.Interfaces()
 	if err != nil {
 		return ""

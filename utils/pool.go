@@ -22,10 +22,14 @@ func NewPool(size int) (*Pool, error) {
 
 func (p *Pool) Submit(task func()) error {
 	p.wg.Add(1)
-	return p.pool.Submit(func() {
+	err := p.pool.Submit(func() {
 		defer p.wg.Done()
 		task()
 	})
+	if err != nil {
+		p.wg.Done() // 提交失败（池已关闭或已满）时任务不会执行，否则 Wait 永久阻塞
+	}
+	return err
 }
 
 func (p *Pool) Wait() {

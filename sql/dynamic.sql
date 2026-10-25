@@ -30,7 +30,7 @@ CREATE TABLE `ann_log_statistics` (
                                     `traffic_in` bigint(64) DEFAULT NULL,
                                     `traffic_out` bigint(64) DEFAULT NULL,
                                     PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=COMPACT;
 
 
 CREATE TABLE `ann_order` (
@@ -47,7 +47,7 @@ CREATE TABLE `ann_order` (
                            `contractPeriodUnit` varchar(64) DEFAULT NULL,
                            `autoRenew` int(2) DEFAULT NULL,
                            PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=COMPACT;
 
 
 CREATE TABLE `ann_order_config` (
@@ -68,4 +68,4 @@ CREATE TABLE `ann_order_config` (
                                   `cpeStatus` varchar(64) DEFAULT NULL,
                                   `demandTenantId` varchar(128) DEFAULT NULL,
                                   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=COMPACT;

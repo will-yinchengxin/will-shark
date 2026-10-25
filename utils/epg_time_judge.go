@@ -2,15 +2,14 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"sort"
 	"time"
 )
 
 var (
-	BeforeTime = "2024-03-01 00:00:00"
-	timeErr    = errors.New("时间格式错误,注意检查 !!!")
+	BeforeTime    = "2024-03-01 00:00:00"
+	errTimeFormat = errors.New("时间格式错误")
 )
 
 type TimeInterval struct {
@@ -21,14 +20,17 @@ type TimeInterval struct {
 func GetTimeSeries(timeStrArr [][]string) ([]TimeInterval, error) {
 	timeSeries := make([]TimeInterval, 0, len(timeStrArr))
 	re := regexp.MustCompile("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$")
-	for key, _ := range timeStrArr {
+	for key := range timeStrArr {
+		if len(timeStrArr[key]) < 2 {
+			return nil, errTimeFormat
+		}
 		matchStart := re.MatchString(timeStrArr[key][0])
 		if !matchStart {
-			return nil, timeErr
+			return nil, errTimeFormat
 		}
 		matchEnd := re.MatchString(timeStrArr[key][1])
 		if !matchEnd {
-			return nil, timeErr
+			return nil, errTimeFormat
 		}
 		tmp := TimeInterval{
 			StartTime: parseTime(timeStrArr[key][0]),
@@ -54,7 +56,6 @@ func GetTimeSeries(timeStrArr [][]string) ([]TimeInterval, error) {
 func CheckOverlap(timeSeries []TimeInterval) error {
 	for i := 0; i < len(timeSeries)-1; i++ {
 		if timeSeries[i].EndTime.After(timeSeries[i+1].StartTime) {
-			fmt.Println("Error: 时间序列存在重叠")
 			return errors.New("时间序列存在重叠")
 		}
 	}
@@ -64,7 +65,6 @@ func CheckOverlap(timeSeries []TimeInterval) error {
 func CheckRange(timeSeries []TimeInterval) error {
 	for _, interval := range timeSeries {
 		if interval.StartTime.Before(parseTime(BeforeTime)) || interval.EndTime.Before(parseTime(BeforeTime)) {
-			fmt.Println("Error: 时间格式不正确或超出范围")
 			return errors.New("时间范围不正确")
 		}
 	}

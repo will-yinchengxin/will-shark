@@ -1,3 +1,4 @@
+// Package dao 数据访问层：基于 gorm 的表操作，读写分离时用 MysqlPool.Master 强制走主库。
 package dao
 
 import (
@@ -30,14 +31,16 @@ func PaginateParams(offset int, pageSize int) func(db *gorm.DB) *gorm.DB {
 func PaginateNumber(pageC request.Page) (page int, offset int, pageSize int) {
 
 	page = pageC.Page
-	if page == 0 {
+	if page <= 0 {
 		page = 1
 	}
 
 	pageSize = pageC.Size
-
-	if pageC.Size <= 0 {
+	if pageSize <= 0 {
 		pageSize = consts.PageSizeDefault
+	}
+	if pageSize > consts.PageSizeMax { // 兜底：防止 size=1000000 一次查出整表
+		pageSize = consts.PageSizeMax
 	}
 
 	offset = (page - 1) * pageSize

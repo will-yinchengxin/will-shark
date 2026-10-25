@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,17 +10,20 @@ import (
 
 // Field 一个列在生成代码中的表示
 type Field struct {
-	Name     string // Go 字段名
-	Column   string
-	Type     string // 实体字段类型（可空列为指针）
-	BaseType string // 去掉指针后的类型
-	JSON     string
-	Label    string
-	Comment  string
-	GormTag  string
-	PK       bool
-	Auto     bool // 自增或自动维护的时间列，不允许客户端写入
+	Name       string // Go 字段名
+	Column     string
+	Type       string // 实体字段类型（可空列为指针）
+	BaseType   string // 去掉指针后的类型
+	JSON       string
+	Label      string
+	Comment    string
+	GormTag    string
+	PK         bool
+	Auto       bool // 自增或自动维护的时间列，不允许客户端写入
+	HasDefault bool // 创建时未传入则由数据库应用 DEFAULT
 
+	CreateType    string // 创建请求中的字段类型
+	CreateDeref   bool   // CreateType 为指针而实体字段不是，赋值时需要解引用
 	CreateBinding string
 	UpdateBinding string
 }
@@ -42,37 +46,55 @@ var (
 func newTableData(t *Table) (*TableData, error) {
 	td := &TableData{Name: t.Name, Comment: t.Comment}
 	pkSet := map[string]bool{}
+	fields := map[string]string{}
 	for _, c := range t.PK {
 		pkSet[c] = true
 	}
 	for _, c := range t.Columns {
-		f := newField(c, pkSet[c.Name])
+		f, err := newField(c, pkSet[c.Name])
+		if err != nil {
+			return nil, fmt.Errorf("table %s: %w", t.Name, err)
+		}
+		if prev, ok := fields[f.Name]; ok {
+			return nil, fmt.Errorf("table %s: columns %q and %q generate the same Go field %s", t.Name, prev, c.Name, f.Name)
+		}
+		fields[f.Name] = c.Name
 		td.Fields = append(td.Fields, f)
 		if f.PK {
 			td.PK = f
 		}
-		if f.PK || f.Auto {
+		if f.Auto {
 			continue
 		}
 		td.Create = append(td.Create, f)
-		td.Update = append(td.Update, f)
+		if !f.PK {
+			td.Update = append(td.Update, f)
+		}
 	}
 	if len(t.PK) != 1 || td.PK.Name == "" {
-		return td, fmt.Errorf("table %s must have a single-column primary key to generate CRUD (use the model command for entity/dao only)", t.Name)
+		return td, fmt.Errorf("table %s %w to generate CRUD (use the model command for entity/dao only)", t.Name, errNoSinglePK)
 	}
 	return td, nil
 }
 
-func newField(c Column, pk bool) Field {
+// errNoSinglePK 表没有单列主键：只能生成 entity，不能生成 dao / CRUD
+var errNoSinglePK = errors.New("must have a single-column primary key")
+
+func newField(c Column, pk bool) (Field, error) {
+	name, err := fieldName(c.Name)
+	if err != nil {
+		return Field{}, err
+	}
 	base, nullable := goType(c)
 	f := Field{
-		Name:     fieldName(c.Name),
-		Column:   c.Name,
-		BaseType: base,
-		Type:     base,
-		JSON:     c.Name,
-		Comment:  c.Comment,
-		PK:       pk,
+		Name:       name,
+		Column:     c.Name,
+		BaseType:   base,
+		Type:       base,
+		JSON:       c.Name,
+		Comment:    c.Comment,
+		PK:         pk,
+		HasDefault: c.HasDef && !pk,
 	}
 	if nullable && !pk && base != "[]byte" {
 		f.Type = "*" + base
@@ -82,6 +104,9 @@ func newField(c Column, pk bool) Field {
 	tags := []string{"column:" + c.Name}
 	if pk {
 		tags = append(tags, "primaryKey")
+		if !c.AutoInc {
+			tags = append(tags, "autoIncrement:false")
+		}
 	}
 	lower := strings.ToLower(c.Name)
 	switch {
@@ -98,13 +123,21 @@ func newField(c Column, pk bool) Field {
 	f.GormTag = strings.Join(tags, ";")
 
 	var rules []string
-	if c.NotNull && !c.HasDef && !c.AutoInc && base != "bool" {
+	if (c.NotNull || pk) && (!c.HasDef || pk) && !c.AutoInc {
 		rules = append(rules, "required")
 	} else {
 		rules = append(rules, "omitempty")
 	}
 	if base == "string" && c.Size > 0 && isCharType(c.DataType) {
 		rules = append(rules, "max="+strconv.Itoa(c.Size))
+	}
+	f.CreateType = f.Type
+	// required 只校验是否传入；0 和 false 都是合法值。
+	if rules[0] == "required" && (isNumeric(base) || base == "bool") {
+		f.CreateType, f.CreateDeref = "*"+base, true
+	}
+	if c.HasDef && f.Type == base && base != "[]byte" {
+		f.CreateType, f.CreateDeref = "*"+base, true
 	}
 	f.CreateBinding = strings.Join(rules, ",")
 	if f.CreateBinding == "omitempty" {
@@ -114,7 +147,7 @@ func newField(c Column, pk bool) Field {
 	if f.UpdateBinding == "omitempty" {
 		f.UpdateBinding = ""
 	}
-	return f
+	return f, nil
 }
 
 func labelOf(c Column) string {
@@ -132,6 +165,10 @@ func labelOf(c Column) string {
 }
 
 func isCharType(t string) bool { return t == "varchar" || t == "char" }
+
+func isNumeric(goType string) bool {
+	return strings.Contains(goType, "int") || strings.HasPrefix(goType, "float")
+}
 
 // goType MySQL 类型 → Go 类型；第二个返回值表示是否可空
 func goType(c Column) (string, bool) {

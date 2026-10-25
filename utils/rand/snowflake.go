@@ -1,3 +1,4 @@
+// Package rand 雪花算法 ID 生成。
 package rand
 
 import (
@@ -39,8 +40,11 @@ type SnowFlake struct {
 	startTime time.Time
 }
 
+// defaultEpoch New 使用的固定起始时间。起始时间必须固定不变，否则重启后生成的 ID 会变小并与历史 ID 重复
+var defaultEpoch = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // NewWith 给定开始时间和可选的 dataCenterID 和 workerID（注意两者的顺序）
-// 如果 ids 没传，则使用 machineID
+// 如果 ids 没传，则使用 machineID。startTime 一经使用不能修改。
 func NewWith(startTime time.Time, ids ...uint8) *SnowFlake {
 	var dataCenterID, workerID uint8
 
@@ -61,31 +65,27 @@ func NewWith(startTime time.Time, ids ...uint8) *SnowFlake {
 	}
 }
 
+// New 使用固定起始时间（2024-01-01 UTC）与本机 IP 推导的机器号
 func New() *SnowFlake {
-	now := time.Now()
-	startTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	dataCenterID, workerID := machineID()
-	return NewWith(startTime, dataCenterID, workerID)
+	return NewWith(defaultEpoch, dataCenterID, workerID)
 }
 
-// NextID 获取一个 ID
+// NextID 获取一个 ID；并发安全，同一实例生成的 ID 严格递增
 func (s *SnowFlake) NextID() int64 {
-	now := time.Now().UTC()
-	millisecond := now.UnixNano() / 1e6
-	if millisecond < s.lastTimestamp {
-		panic("Clock moved backwards, Refusing to generate id")
-	}
-
 	s.mutex.Lock()
 
+	millisecond := genMillisecond()
+	// 时钟回拨：沿用上次的时间戳继续递增序号，保证不重复（不 panic）
+	if millisecond < s.lastTimestamp {
+		millisecond = s.lastTimestamp
+	}
 	// 同一毫秒，进行毫秒内序号递增
 	if millisecond == s.lastTimestamp {
 		s.sequence = (s.sequence + 1) & sequenceMask
-		// 当前毫秒内序号用完，堵塞到下一毫秒
+		// 当前毫秒内序号用完，借用下一毫秒
 		if s.sequence == 0 {
-			for millisecond <= s.lastTimestamp {
-				millisecond = genMillisecond()
-			}
+			millisecond++
 		}
 	} else {
 		// 时间戳改变，毫秒内序号重置
@@ -105,6 +105,8 @@ func (s *SnowFlake) NextID() int64 {
 }
 
 func (s *SnowFlake) String() string {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return fmt.Sprintf("start_time:%s, data_center:%d, worker_id:%d, sequence:%d",
 		s.startTime, s.dataCenterID, s.workerID, s.sequence)
 }
@@ -121,9 +123,10 @@ func machineID() (uint8, uint8) {
 			continue
 		}
 
-		ip := ipnet.IP.To4()
-		if ip != nil {
-			return ip[2], ip[3]
+		// 取 IPv4 的低 10 位：同一 /22 网段内各机器的机器号不同
+		if ip := ipnet.IP.To4(); ip != nil {
+			low := uint16(ip[2])<<8 | uint16(ip[3])
+			return uint8((low >> 5) & dataCenterMask), uint8(low & workerMask)
 		}
 	}
 

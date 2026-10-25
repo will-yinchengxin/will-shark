@@ -5,3 +5,5 @@
 docs/swagger.*
 Dockerfile
 docker-compose.yaml
+test
+coverage.out

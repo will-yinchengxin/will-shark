@@ -35,7 +35,7 @@ type rule struct {
 var rules = []rule{
 	{"passwordFormat", Password, "{0} 密码必须为字母，数字，特殊字符中至少两种的组合"},
 	{"phoneFormat", Phone, "{0} 数字组成，1开头并且长度必须为11"},
-	{"urlFormat", CheckUrl, "{0} 不符合url或uri的格式"},
+	{"urlFormat", CheckURL, "{0} 不符合url或uri的格式"},
 }
 
 // Setup 注册到 gin 默认校验器，可重复调用

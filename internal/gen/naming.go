@@ -31,6 +31,13 @@ func NewName(s string) (Name, error) {
 	if len(words) == 0 {
 		return Name{}, fmt.Errorf("invalid name %q", s)
 	}
+	for _, w := range words {
+		for _, r := range w {
+			if r >= unicode.MaxASCII {
+				return Name{}, fmt.Errorf("invalid name %q: only ASCII letters, digits, '_' and '-' are supported", s)
+			}
+		}
+	}
 	if !unicode.IsLetter(rune(words[0][0])) {
 		return Name{}, fmt.Errorf("invalid name %q: must start with a letter", s)
 	}
@@ -95,14 +102,16 @@ func splitWords(s string) []string {
 	return words
 }
 
-// fieldName 列名转 Go 字段名
-func fieldName(col string) string {
+// fieldName 列名转 Go 字段名；数字开头的列名加前缀 F，非 ASCII 列名返回错误
+func fieldName(col string) (string, error) {
 	n, err := NewName(col)
 	if err != nil {
-		n, _ = NewName("f_" + col)
+		if n, err = NewName("f_" + col); err != nil {
+			return "", fmt.Errorf("column %q: %w", col, err)
+		}
 	}
 	if n.Pascal == "TableName" {
-		return "TableNameField"
+		return "TableNameField", nil
 	}
-	return n.Pascal
+	return n.Pascal, nil
 }

@@ -5,6 +5,7 @@ package gen
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -120,7 +121,7 @@ func New(dir string) (*Generator, error) {
 		return nil, err
 	}
 	for d := dir; ; d = filepath.Dir(d) {
-		b, err := os.ReadFile(filepath.Join(d, "go.mod"))
+		b, err := os.ReadFile(filepath.Join(d, "go.mod")) // #nosec G304 -- 代码生成器按约定读取项目根目录的 go.mod
 		if err == nil {
 			m := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(b)
 			if m == nil {
@@ -181,6 +182,11 @@ func (g *Generator) Module(o ModuleOptions) (*Plan, error) {
 		}
 		if table, err = newTableData(t); err != nil {
 			return nil, err
+		}
+		for _, f := range table.Update {
+			if f.Name == "ID" {
+				return nil, fmt.Errorf("table %s: column %q conflicts with the update request's path ID (use model to generate entity/dao only)", t.Name, f.Column)
+			}
 		}
 	}
 
@@ -346,6 +352,9 @@ func (g *Generator) Model(o ModelOptions) (*Plan, error) {
 			return nil, err
 		}
 		td, err := newTableData(t)
+		if err != nil && !errors.Is(err, errNoSinglePK) {
+			return nil, err
+		}
 		md := &modelData{Module: g.ModulePath, Type: n.Pascal, Table: td}
 		f := files(n)
 		if r, rerr := renderGo(f.entity, "entity.tmpl", md); rerr != nil {
@@ -374,7 +383,7 @@ func (g *Generator) Model(o ModelOptions) (*Plan, error) {
 }
 
 func (g *Generator) loadTable(file, name string) (*Table, error) {
-	src, err := os.ReadFile(file)
+	src, err := os.ReadFile(file) // #nosec G304 -- 代码生成器读取开发者通过 -sql 指定的本地文件
 	if err != nil {
 		return nil, err
 	}

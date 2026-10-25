@@ -12,9 +12,9 @@
 //	func (j *OrderCleanup) Run(ctx context.Context) error { return j.Order.CleanExpired(ctx) }
 //
 // 特性：
-//   - Every 固定间隔（上一轮结束后开始计时）/ Cron 表达式（支持可选的秒字段与 @every、@daily 等）
-//   - 同一任务在单进程内串行执行，不会重叠
-//   - WithLock：多副本部署时借助分布式锁保证同一时刻只有一个实例执行
+//   - Every 固定间隔，对齐到时间刻度（如 5m → 每小时的 :00、:05…）/ Cron 表达式（支持可选的秒字段与 @every、@daily 等）
+//   - 同一任务在单进程内串行执行，不会重叠；上一轮超过间隔未结束时跳过错过的刻度
+//   - WithLock：多副本部署时借助分布式锁保证同一时刻只有一个实例执行，且每个调度刻度只执行一次
 //   - WithTimeout：单次执行超时；WithRunOnStart：启动后立即执行一次
 //   - Trigger：手动触发（例如管理接口），通过 channel 通知任务循环，不阻塞调用方
 //   - panic 隔离、执行耗时与错误日志、每次执行一个 trace span
@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,7 +76,8 @@ type Option func(*job)
 // WithTimeout 单次执行超时，超时后 ctx 被取消（任务需响应 ctx）
 func WithTimeout(d time.Duration) Option { return func(j *job) { j.timeout = d } }
 
-// WithLock 执行前获取分布式锁，ttl 应大于任务最长执行时间；需在 New 时提供 WithLocker
+// WithLock 多副本部署时保证每个调度刻度只有一个实例执行；需在 New 时提供 WithLocker。
+// ttl 应大于任务最长执行时间与副本间的时钟偏差。
 func WithLock(ttl time.Duration) Option { return func(j *job) { j.lockTTL = ttl } }
 
 // WithRunOnStart 调度器启动后立即执行一次
@@ -98,13 +100,21 @@ func New(opts ...SchedulerOption) *Scheduler {
 	return s
 }
 
-// Every 注册固定间隔任务：上一轮结束后等待 interval 再执行下一轮。
+// Every 注册固定间隔任务：在 interval 的整数倍时刻执行（各副本的刻度一致，便于 WithLock 去重）。
 // 注册阶段的编程错误（重名、启动后注册、缺少 Locker）会 panic，以便在启动时暴露。
 func (s *Scheduler) Every(name string, interval time.Duration, fn Func, opts ...Option) {
 	if interval <= 0 {
 		panic(fmt.Sprintf("scheduler: job %q interval must be positive", name))
 	}
-	s.add(name, "every "+interval.String(), cron.ConstantDelaySchedule{Delay: interval}, fn, opts)
+	s.add(name, "every "+interval.String(), alignedSchedule(interval), fn, opts)
+}
+
+// alignedSchedule 按 interval 对齐到绝对时间刻度（与时区无关），支持亚秒间隔。
+// cron.ConstantDelaySchedule 会按秒取整，间隔小于 1s 时 Next 可能落在过去导致空转。
+type alignedSchedule time.Duration
+
+func (d alignedSchedule) Next(t time.Time) time.Time {
+	return t.Truncate(time.Duration(d)).Add(time.Duration(d))
 }
 
 // cronParser 支持 5 段（分 时 日 月 周）、6 段（秒 分 时 日 月 周）与 @every/@daily 等描述符
@@ -195,10 +205,11 @@ func (s *Scheduler) Wait(ctx context.Context) error {
 
 func (s *Scheduler) loop(ctx context.Context, j *job) {
 	if j.runOnStart && ctx.Err() == nil {
-		s.run(ctx, j)
+		s.run(ctx, j, time.Time{})
 	}
 	for {
-		timer := time.NewTimer(time.Until(j.schedule.Next(time.Now())))
+		next := j.schedule.Next(time.Now())
+		timer := time.NewTimer(time.Until(next))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -206,15 +217,17 @@ func (s *Scheduler) loop(ctx context.Context, j *job) {
 		case <-timer.C:
 		case <-j.trigger:
 			timer.Stop()
+			next = time.Time{} // 手动触发不属于任何调度刻度
 		}
 		if ctx.Err() != nil {
 			return
 		}
-		s.run(ctx, j)
+		s.run(ctx, j, next)
 	}
 }
 
-func (s *Scheduler) run(ctx context.Context, j *job) {
+// run 执行一次任务；tick 为本次对应的调度刻度，零值表示启动时执行或手动触发
+func (s *Scheduler) run(ctx context.Context, j *job, tick time.Time) {
 	ctx, span := otel.Tracer("scheduler").Start(ctx, "cron "+j.name)
 	defer span.End()
 	log := slog.With("job", j.name)
@@ -230,6 +243,19 @@ func (s *Scheduler) run(ctx context.Context, j *job) {
 			return
 		}
 		defer unlock(context.WithoutCancel(ctx))
+		// 互斥锁在执行后释放，时钟稍慢的副本随后仍可能拿到锁；
+		// 因此再按刻度占位且不释放（到期自动删除），保证每个刻度只执行一次
+		if !tick.IsZero() {
+			_, ok, err := s.locker.TryLock(ctx, s.lockPrefix+j.name+":"+strconv.FormatInt(tick.UnixNano(), 10), j.lockTTL)
+			if err != nil {
+				log.WarnContext(ctx, "cron job lock failed, skipped", "err", err)
+				return
+			}
+			if !ok {
+				log.DebugContext(ctx, "cron job skipped, tick already run by another instance")
+				return
+			}
+		}
 	}
 
 	runCtx := ctx

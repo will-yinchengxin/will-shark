@@ -1,13 +1,15 @@
+// Package lock 基于 Redis 的分布式锁，Locker 可直接用于 scheduler.WithLocker。
 package lock
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"sync/atomic"
 	"willshark/app/modules/redis"
-	"willshark/utils/strings"
 )
 
 const (
@@ -27,11 +29,22 @@ func NewRedisLock(store *redis.Redis, key string) *RedisLock {
 	return &RedisLock{
 		store: store,
 		key:   key,
-		id:    strings.Randn(randomLen),
+		id:    randomID(),
 	}
 }
 
+// randomID 锁持有者标识，使用加密随机数，避免不同进程生成相同 ID 而误删他人的锁
+func randomID() string {
+	b := make([]byte, randomLen/2)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// SetExpire 锁的过期秒数（实际 TTL 额外加 500ms 容差）；未设置或 <=0 时只有 500ms
 func (rl *RedisLock) SetExpire(seconds int) {
+	if seconds < 0 {
+		seconds = 0
+	}
 	atomic.StoreUint32(&rl.seconds, uint32(seconds))
 }
 

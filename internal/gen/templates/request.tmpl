@@ -6,20 +6,20 @@ package request
 {{if eq .Kind "list"}}
 // {{.Req}} {{.Summary}}参数
 type {{.Req}} struct {
-	Page int `form:"page,default=1" binding:"gte=1" label:"页码"`
+	Page int `form:"page,default=1" binding:"gte=1,lte=10000" label:"页码"` // 限制深分页：OFFSET 过大时 MySQL 需扫描大量行
 	Size int `form:"size,default=20" binding:"gte=1,lte=100" label:"每页条数"`
 }
 {{else if or (eq .Kind "get") (eq .Kind "delete")}}
 // {{.Req}} {{.Summary}}参数
 type {{.Req}} struct {
-	ID {{$.IDType}} `uri:"id" form:"-" json:"-" binding:"required" label:"ID"`
+	ID {{$.IDType}} `uri:"id" form:"-" json:"-"{{if eq $.IDType "string"}} binding:"required"{{end}} label:"ID"`
 }
 {{else if eq .Kind "create"}}
 // {{.Req}} {{.Summary}}参数
 type {{.Req}} struct {
 {{- if $.Table}}
 {{- range $.Table.Create}}
-	{{.Name}} {{.Type}} `json:"{{.JSON}}"{{if .CreateBinding}} binding:"{{.CreateBinding}}"{{end}} label:"{{.Label}}"`{{if .Comment}} // {{.Comment}}{{end}}
+	{{.Name}} {{.CreateType}} `json:"{{.JSON}}"{{if .CreateBinding}} binding:"{{.CreateBinding}}"{{end}} label:"{{.Label}}"`{{if .Comment}} // {{.Comment}}{{end}}
 {{- end}}
 {{- else}}
 	Name string `json:"name" binding:"required,max=64" label:"名称"` // TODO: 按业务修改字段
@@ -28,7 +28,7 @@ type {{.Req}} struct {
 {{else if eq .Kind "update"}}
 // {{.Req}} {{.Summary}}参数；字段为 null 或不传表示不修改
 type {{.Req}} struct {
-	ID {{$.IDType}} `uri:"id" form:"-" json:"-" binding:"required" label:"ID"`
+	ID {{$.IDType}} `uri:"id" form:"-" json:"-"{{if eq $.IDType "string"}} binding:"required"{{end}} label:"ID"`
 {{- if $.Table}}
 {{- range $.Table.Update}}
 	{{.Name}} *{{.BaseType}} `json:"{{.JSON}}"{{if .UpdateBinding}} binding:"{{.UpdateBinding}}"{{end}} label:"{{.Label}}"`{{if .Comment}} // {{.Comment}}{{end}}

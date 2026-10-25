@@ -23,7 +23,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// closeTimeout 单个资源关闭的等待上限
+// closeTimeout 单个资源关闭 context 的期限（关闭函数需主动遵守）
 const closeTimeout = 5 * time.Second
 
 // Infra 基础设施连接，键为配置中的连接名
@@ -84,19 +84,19 @@ func New(ctx context.Context, cfg *config.Config) (app *App, cleanup func(), err
 		cl.add("rocketmq", mq.Close)
 	}
 
-	db, ok := infra.MySQL[consts.DB_NAME]
+	db, ok := infra.MySQL[consts.DBName]
 	if !ok {
-		return nil, nil, fmt.Errorf("mysql.%s is not configured", consts.DB_NAME)
+		return nil, nil, fmt.Errorf("mysql.%s is not configured", consts.DBName)
 	}
-	cache, ok := infra.Redis[consts.Cache_NAME]
+	cache, ok := infra.Redis[consts.CacheName]
 	if !ok {
-		return nil, nil, fmt.Errorf("redis.%s is not configured", consts.Cache_NAME)
+		return nil, nil, fmt.Errorf("redis.%s is not configured", consts.CacheName)
 	}
 
 	app = &App{Config: cfg, Infra: infra}
 	routers, sched := wire(cfg, &dao.MysqlPool{DB: db.DB}, &rc.Redis{Cache: cache})
 	app.Scheduler = sched
-	app.Engine, err = NewEngine(cfg, app.readiness, routers)
+	app.Engine, err = NewEngine(cfg, app.readiness, app.checkDeps, routers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -119,7 +119,7 @@ func wire(cfg *config.Config, pool *dao.MysqlPool, rds *rc.Redis) (*router.Route
 
 	// ---- router ----
 	routers := &router.Routers{
-		Api: &router.ApiRouter{Apps: appsSvc},
+		API: &router.APIRouter{Apps: appsSvc},
 		// willshark:gen:router
 	}
 
@@ -134,11 +134,18 @@ func wire(cfg *config.Config, pool *dao.MysqlPool, rds *rc.Redis) (*router.Route
 	return routers, sched
 }
 
-// readiness 就绪检查：退出中返回错误；依赖不可用返回错误
-func (a *App) readiness(ctx context.Context) error {
+// readiness 就绪检查（/readyz）：只反映本进程状态——启动完成且未进入退出流程。
+// 不检查 MySQL / Redis 等所有副本共用的依赖：依赖抖动时如果所有 Pod 同时变为未就绪，
+// 负载均衡会摘掉全部实例，局部故障被放大为整体不可用。依赖状态见 checkDeps（/healthz/deps）。
+func (a *App) readiness(context.Context) error {
 	if !a.ready.Load() {
 		return fmt.Errorf("not ready")
 	}
+	return nil
+}
+
+// checkDeps 依赖健康检查（/healthz/deps）：逐个 ping 所有 MySQL 节点与 Redis，用于监控告警
+func (a *App) checkDeps(ctx context.Context) error {
 	for name, conn := range a.Infra.MySQL {
 		if err := conn.Ping(ctx); err != nil {
 			return fmt.Errorf("mysql %s: %w", name, err)

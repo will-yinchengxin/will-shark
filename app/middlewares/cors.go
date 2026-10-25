@@ -38,6 +38,7 @@ func Cors(allowOrigins []string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		h.Set("Access-Control-Expose-Headers", HeaderRequestID) // 前端可读取请求 ID 用于排查
 
 		if c.Request.Method == http.MethodOptions {
 			allowHeaders := c.GetHeader("Access-Control-Request-Headers")

@@ -1,43 +1,37 @@
+// Package file 文件与目录操作工具。
 package file
 
 import (
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 )
 
-// HasDir judge dir
+// HasDir 判断 path 是否为已存在的目录（普通文件返回 false）
 func HasDir(path string) (bool, error) {
-	_, _err := os.Stat(path)
-	if _err == nil {
-		return true, nil
+	info, err := os.Stat(path)
+	if err == nil {
+		return info.IsDir(), nil
 	}
-	if os.IsNotExist(_err) {
+	if os.IsNotExist(err) {
 		return false, nil
 	}
-	return false, _err
+	return false, err
 }
 
-// CreateDir create a dir
-func CreateDir(path string) {
-	_exist, _err := HasDir(path)
-	if _err != nil {
-		fmt.Printf("获取文件夹异常： %v\n", _err)
-		return
+// CreateDir 创建单层目录，已存在时返回 nil；同名普通文件已存在时返回错误。
+// 不向 stdout 打印（stdout 只输出结构化日志）
+func CreateDir(path string) error {
+	err := os.Mkdir(path, 0o750)
+	if err == nil {
+		return nil
 	}
-	if _exist {
-		fmt.Println("文件夹已存在！")
-	} else {
-		err := os.Mkdir(path, os.ModePerm)
-		if err != nil {
-			fmt.Printf("创建目录异常： %v\n", err)
-		} else {
-			fmt.Println("创建成功!")
+	if os.IsExist(err) {
+		if ok, _ := HasDir(path); ok {
+			return nil
 		}
 	}
+	return err
 }
 
 func SelfPath() string {
@@ -50,33 +44,33 @@ func SelfDir() string {
 	return filepath.Dir(SelfPath())
 }
 
-// get filepath base name
+// Basename 返回路径的最后一个元素
 func Basename(file string) string {
-	return path.Base(file)
+	return filepath.Base(file)
 }
 
-// get filepath dir name
+// Dir 返回路径的目录部分
 func Dir(file string) string {
-	return path.Dir(file)
+	return filepath.Dir(file)
 }
 
 func InsureDir(path string) error {
 	if IsExist(path) {
 		return nil
 	}
-	return os.MkdirAll(path, os.ModePerm)
+	return os.MkdirAll(path, 0o750)
 }
 
 func Ext(file string) string {
-	return path.Ext(file)
+	return filepath.Ext(file)
 }
 
-// rename file name
+// Rename 重命名文件
 func Rename(file string, to string) error {
 	return os.Rename(file, to)
 }
 
-// delete file
+// Unlink 删除文件
 func Unlink(file string) error {
 	return os.Remove(file)
 }
@@ -98,8 +92,7 @@ func IsExist(path string) bool {
 	return err == nil || os.IsExist(err)
 }
 
-// Search a file in paths.
-// this is often used in search config file in /etc ~/
+// SearchFile 依次在 paths 中查找 filename，返回第一个存在的完整路径
 func SearchFile(filename string, paths ...string) (fullPath string, err error) {
 	for _, path := range paths {
 		if fullPath = filepath.Join(path, filename); IsExist(fullPath) {
@@ -110,16 +103,16 @@ func SearchFile(filename string, paths ...string) (fullPath string, err error) {
 	return
 }
 
-// get absolute filepath, based on built executable file
+// RealPath 相对路径基于当前工作目录转为绝对路径
 func RealPath(file string) (string, error) {
-	if path.IsAbs(file) {
+	if filepath.IsAbs(file) {
 		return file, nil
 	}
 	wd, err := os.Getwd()
-	return path.Join(wd, file), err
+	return filepath.Join(wd, file), err
 }
 
-// get file modified time
+// FileMTime 返回文件修改时间（秒级时间戳）
 func FileMTime(file string) (int64, error) {
 	f, e := os.Stat(file)
 	if e != nil {
@@ -128,7 +121,7 @@ func FileMTime(file string) (int64, error) {
 	return f.ModTime().Unix(), nil
 }
 
-// get file size as how many bytes
+// FileSize 返回文件字节数
 func FileSize(file string) (int64, error) {
 	f, e := os.Stat(file)
 	if e != nil {
@@ -137,13 +130,13 @@ func FileSize(file string) (int64, error) {
 	return f.Size(), nil
 }
 
-// list dirs under dirPath
+// DirsUnder 列出 dirPath 下的子目录名
 func DirsUnder(dirPath string) ([]string, error) {
 	if !IsExist(dirPath) {
 		return []string{}, nil
 	}
 
-	fs, err := ioutil.ReadDir(dirPath)
+	fs, err := os.ReadDir(dirPath)
 	if err != nil {
 		return []string{}, err
 	}
@@ -167,13 +160,13 @@ func DirsUnder(dirPath string) ([]string, error) {
 
 }
 
-// list files under dirPath
+// FilesUnder 列出 dirPath 下的文件名（不含子目录）
 func FilesUnder(dirPath string) ([]string, error) {
 	if !IsExist(dirPath) {
 		return []string{}, nil
 	}
 
-	fs, err := ioutil.ReadDir(dirPath)
+	fs, err := os.ReadDir(dirPath)
 	if err != nil {
 		return []string{}, err
 	}

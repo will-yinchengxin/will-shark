@@ -1,3 +1,4 @@
+// Package strings 字符串与随机串工具。
 package strings
 
 import (
@@ -7,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -47,7 +49,7 @@ func Rand() string {
 	return Randn(defaultRandLen)
 }
 
-func RandId() string {
+func RandID() string {
 	b := make([]byte, idLen)
 	_, err := crand.Read(b)
 	if err != nil {
@@ -78,10 +80,11 @@ func Seed(seed int64) {
 	src.Seed(seed)
 }
 
+// LowerFirst 首字符转小写（按 rune 处理，支持多字节字符）
 func LowerFirst(s string) string {
-	if s == "" {
+	r, size := utf8.DecodeRuneInString(s)
+	if size == 0 {
 		return ""
 	}
-
-	return string(unicode.ToLower(rune(s[0]))) + s[1:]
+	return string(unicode.ToLower(r)) + s[size:]
 }

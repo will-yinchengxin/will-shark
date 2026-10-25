@@ -7,6 +7,7 @@
 package errs
 
 import (
+	"context"
 	"errors"
 	"net/http"
 )
@@ -52,13 +53,23 @@ func (e *Error) WithMsg(msg string) *Error {
 	return &c
 }
 
-// From 将任意 error 转为 *Error；非 *Error 视为内部错误
+// From 将任意 error 转为 *Error；非 *Error 视为内部错误。
+// 底层原因是 ctx 取消（客户端断开）或超时的 5xx 错误单独归类为 Canceled / Timeout，
+// 例如 errs.Internal.Wrap(ctxErr)，避免把客户端断开记成服务端故障。
 func From(err error) *Error {
 	if err == nil {
 		return nil
 	}
 	var e *Error
-	if errors.As(err, &e) {
+	if errors.As(err, &e) && e.Status < http.StatusInternalServerError {
+		return e
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return Canceled.Wrap(err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return Timeout.Wrap(err)
+	case e != nil:
 		return e
 	}
 	return Internal.Wrap(err)
@@ -73,6 +84,8 @@ var (
 	Conflict        = New(4090, http.StatusConflict, "资源冲突")
 	TooLarge        = New(4130, http.StatusRequestEntityTooLarge, "请求体过大")
 	TooManyRequests = New(4290, http.StatusTooManyRequests, "请求过于频繁，请稍后重试")
+	Canceled        = New(4990, 499, "请求已取消") // 客户端断开（nginx 约定的 499）
+	Timeout         = New(9005, http.StatusGatewayTimeout, "请求超时，请稍后重试")
 	Failure         = New(9001, http.StatusInternalServerError, "请求失败")
 	Upstream        = New(9002, http.StatusBadGateway, "请求依赖的服务失败")
 	Internal        = New(9003, http.StatusInternalServerError, "服务器异常，请稍后重试")

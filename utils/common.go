@@ -1,3 +1,4 @@
+// Package utils 通用工具函数。
 package utils
 
 import (
@@ -17,12 +18,10 @@ func ErrorLog(err error) {
 		return
 	}
 	slog.Error(err.Error())
-
-	return
 }
 
-// copy a by b  b->a
-func CopyStructFields(a interface{}, b interface{}, fields ...string) (err error) {
+// CopyStructFields 把 b 中的同名字段复制到 a（b → a）
+func CopyStructFields(a interface{}, b interface{}) error {
 	return copier.Copy(a, b)
 }
 
@@ -51,12 +50,4 @@ func cleanUpFuncName(funcName string) string {
 func SetPassword(password string) ([]byte, error) {
 	newPass, err := bcrypt.GenerateFromPassword([]byte(password), consts.PasswordDifficult)
 	return newPass, err
-}
-
-func InsertSliceHead() {
-	a := []int{1, 2, 3, 4, 5}
-	a = append(a, 0)
-	index := 2
-	copy(a[index+1:], a[index:])
-	a[index] = 0
 }

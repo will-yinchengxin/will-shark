@@ -136,7 +136,7 @@ func runModule(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if !c.dryRun {
-		fmt.Fprintln(stdout, "\n完成。下一步: go build ./... && go test ./...（如需更新 swagger 文档见 README）")
+		fmt.Fprintln(stdout, "\n完成。下一步: make check（如需更新 swagger 文档见 README）")
 	}
 	return nil
 }

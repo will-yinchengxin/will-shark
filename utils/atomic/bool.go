@@ -1,3 +1,4 @@
+// Package atomic 原子类型；新代码可直接使用标准库 sync/atomic.Bool。
 package atomic
 
 import "sync/atomic"

@@ -30,6 +30,7 @@ var createRe = regexp.MustCompile("(?is)CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXIST
 
 // ParseSQL 解析 SQL 文本中的所有 CREATE TABLE 语句（MySQL 方言）
 func ParseSQL(src string) ([]*Table, error) {
+	src = stripComments(src)
 	var tables []*Table
 	pos := 0
 	for {
@@ -132,12 +133,43 @@ func (t *Table) addDefinition(def string) error {
 
 var commentRe = regexp.MustCompile(`(?is)\bCOMMENT\s*=?\s*'((?:[^'\\]|\\.|'')*)'`)
 
+// columnComment 提取 COMMENT '...'；关键字须在引号外，避免误匹配 DEFAULT 'xx comment'
 func columnComment(s string) string {
-	m := commentRe.FindStringSubmatch(s)
+	loc := commentKeywordRe.FindStringIndex(maskQuoted(s))
+	if loc == nil {
+		return ""
+	}
+	m := commentRe.FindStringSubmatch(s[loc[0]:])
 	if m == nil {
 		return ""
 	}
 	return cleanComment(m[1])
+}
+
+var commentKeywordRe = regexp.MustCompile(`(?i)\bCOMMENT\s*=?\s*'`)
+
+// maskQuoted 把引号内的字符替换为空格（长度不变），便于在原串上按位置匹配引号外的关键字
+func maskQuoted(s string) string {
+	b := []byte(s)
+	var quote byte
+	for i := 0; i < len(b); i++ {
+		ch := b[i]
+		if quote != 0 {
+			if ch == '\\' && i+1 < len(b) {
+				b[i], b[i+1] = ' ', ' '
+				i++
+			} else if ch == quote {
+				quote = 0
+			} else {
+				b[i] = ' '
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+		}
+	}
+	return string(b)
 }
 
 func optionComment(s string) string { return columnComment(s) }
@@ -229,6 +261,47 @@ func indexOutsideQuotes(s string, target byte) int {
 		}
 	}
 	return -1
+}
+
+// stripComments 去掉引号外的 "-- "、"#" 行注释与 /* */ 块注释（换行保留）
+func stripComments(s string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if quote != 0 {
+			b.WriteByte(ch)
+			if ch == '\\' && i+1 < len(s) {
+				i++
+				b.WriteByte(s[i])
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case ch == '\'' || ch == '"' || ch == '`':
+			quote = ch
+			b.WriteByte(ch)
+		case ch == '#' || (ch == '-' && strings.HasPrefix(s[i:], "--") && (i+2 == len(s) || s[i+2] == ' ' || s[i+2] == '\t' || s[i+2] == '\n' || s[i+2] == '\r')):
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			if i < len(s) {
+				b.WriteByte('\n')
+			}
+		case ch == '/' && strings.HasPrefix(s[i:], "/*"):
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				return b.String()
+			}
+			i += end + 3
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(ch)
+		}
+	}
+	return b.String()
 }
 
 // stripQuoted 去掉引号内的内容，避免注释中的关键字干扰属性识别

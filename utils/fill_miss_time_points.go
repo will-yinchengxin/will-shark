@@ -2,12 +2,17 @@ package utils
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 )
 
 func FillMissingTimePoints(data interface{}, startTime, endTime int64, interval int64) (interface{}, error) {
-	if interval == 0 {
-		return nil, fmt.Errorf("interval cannot be zero")
+	if interval <= 0 {
+		return nil, fmt.Errorf("interval must be positive")
+	}
+	// TimePoint 为 uint32，超出范围的时间点会被截断
+	if startTime < 0 || endTime > math.MaxUint32+1 {
+		return nil, fmt.Errorf("time range must be within [0, %d]", uint64(math.MaxUint32))
 	}
 
 	dataValue := reflect.ValueOf(data)
@@ -19,6 +24,9 @@ func FillMissingTimePoints(data interface{}, startTime, endTime int64, interval 
 	}
 
 	elemType := dataValue.Type().Elem()
+	if elemType.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("data must be a slice of struct")
+	}
 
 	timePointFieldIndex := -1
 	for i := 0; i < elemType.NumField(); i++ {
@@ -36,7 +44,7 @@ func FillMissingTimePoints(data interface{}, startTime, endTime int64, interval 
 	dataMap := make(map[int64]reflect.Value)
 	for i := 0; i < dataValue.Len(); i++ {
 		elem := dataValue.Index(i)
-		timePoint := int64(elem.Field(timePointFieldIndex).Uint())
+		timePoint := int64(elem.Field(timePointFieldIndex).Uint()) // #nosec G115 -- 源字段为 uint32，转换为 int64 不会溢出
 		dataMap[timePoint] = elem
 	}
 
@@ -52,7 +60,7 @@ func FillMissingTimePoints(data interface{}, startTime, endTime int64, interval 
 			resultSlice = reflect.Append(resultSlice, existingData)
 		} else {
 			zeroElem := reflect.New(elemType).Elem()
-			zeroElem.Field(timePointFieldIndex).SetUint(uint64(tp))
+			zeroElem.Field(timePointFieldIndex).SetUint(uint64(tp)) // #nosec G115 -- 函数开头已校验时间范围在 [0, MaxUint32] 内
 			resultSlice = reflect.Append(resultSlice, zeroElem)
 		}
 	}

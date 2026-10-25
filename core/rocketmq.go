@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"willshark/envconfig/config"
 
 	"github.com/apache/rocketmq-client-go/v2"
@@ -11,10 +12,22 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/rlog"
 )
 
-// RocketMQ 生产者已启动；消费者需在 Subscribe 之后由调用方 Start
+// RocketMQ 生产者已启动；消费者在 Consumer.Subscribe 之后调用 StartConsumer 启动
 type RocketMQ struct {
 	Producer rocketmq.Producer
 	Consumer rocketmq.PushConsumer
+
+	consumerStarted atomic.Bool
+}
+
+// StartConsumer 启动消费者（需先 Subscribe）。请使用本方法而不是 Consumer.Start，
+// 以便 Close 时正确关闭：未启动的 PushConsumer 调用 Shutdown 会 panic。
+func (m *RocketMQ) StartConsumer() error {
+	if err := m.Consumer.Start(); err != nil {
+		return err
+	}
+	m.consumerStarted.Store(true)
+	return nil
 }
 
 func NewRocketMQ(conf config.RocketMQ) (*RocketMQ, error) {
@@ -28,6 +41,7 @@ func NewRocketMQ(conf config.RocketMQ) (*RocketMQ, error) {
 		return nil, err
 	}
 	if err := p.Start(); err != nil {
+		_ = p.Shutdown()
 		return nil, err
 	}
 	c, err := rocketmq.NewPushConsumer(
@@ -43,5 +57,9 @@ func NewRocketMQ(conf config.RocketMQ) (*RocketMQ, error) {
 }
 
 func (m *RocketMQ) Close(context.Context) error {
-	return errors.Join(m.Consumer.Shutdown(), m.Producer.Shutdown())
+	var errs []error
+	if m.consumerStarted.Load() {
+		errs = append(errs, m.Consumer.Shutdown())
+	}
+	return errors.Join(append(errs, m.Producer.Shutdown())...)
 }

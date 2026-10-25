@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # 国内构建：基础镜像可通过 --build-arg 指向公司 Harbor / 云厂商镜像仓库
-ARG GO_IMAGE=golang:1.26-alpine
+ARG GO_IMAGE=golang:1.26.10-alpine
 ARG RUN_IMAGE=alpine:3.20
 
 FROM ${GO_IMAGE} AS builder
@@ -27,5 +27,6 @@ COPY --chown=app:app envconfig/*.yaml ./envconfig/
 USER app
 EXPOSE 8899
 ENTRYPOINT ["./willshark"]
-# 运行环境，对应 envconfig/<env>_config.yaml
-CMD ["dev"]
+# 运行环境，对应 envconfig/<env>_config.yaml。默认 pro：未注入数据库等配置时校验失败、拒绝启动，
+# 避免误用 dev 配置（开启 swagger、debug 日志、记录请求体）上线；本地调试可 docker run ... willshark dev
+CMD ["pro"]

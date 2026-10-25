@@ -7,26 +7,29 @@
 
 ## ✨ 特性
 
-- **代码生成器**：按需组合生成 router / controller / service / dto / 定时任务，或从建表 SQL 生成完整 CRUD，并自动接入
+- **代码生成器**：按需组合生成 router / controller / service / dto / 定时任务，或从建表 SQL 生成 CRUD，并自动接入
 - **MySQL**：单库 / 主从读写分离 / 主主（多主）；**Redis**：单机 / 集群 / 哨兵
 - **定时任务**：间隔或 cron 表达式、分布式锁（多副本只执行一次）、超时、手动触发、依赖注入
 - 强类型配置 + 环境变量覆盖，启动时校验
 - `log/slog` 结构化日志（JSON），每条日志自动带 `trace_id` / `request_id`
 - OpenTelemetry OTLP 链路追踪（Jaeger / SkyWalking / 阿里云 ARMS / 腾讯云 APM）
 - 泛型 HTTP handler：参数绑定 + 中文校验提示 + 统一响应 / 错误映射
-- 优雅退出：摘流 → 等待在途请求 → 停止定时任务 → 逆序关闭资源；`/healthz`、`/readyz` 探针
+- 优雅退出：摘流 → 等待在途请求 → 停止定时任务 → 逆序关闭资源
+- 探针：`/healthz`（存活）、`/readyz`（就绪：仅反映本进程是否启动完成、是否在退出中）；`/healthz/deps` 检查 MySQL / Redis 各节点，供监控告警使用，**不要**配置为 K8s 探针——共用依赖抖动时所有 Pod 会同时被摘流量
 
 ## 本地开发
-> 推荐 Go >= 1.26.10（更早的 1.26.x 补丁版本存在已知的标准库漏洞）。
+> Go >= 1.26.10（go.mod 与 Docker 构建镜像均固定最低补丁版本）。
 
 ```bash
 docker compose up -d        # MySQL 8 + Redis 7，自动执行 sql/init
 go run . dev                # 加载 envconfig/dev_config.yaml
-go test -race ./...
-WS_INTEGRATION=1 go test ./bootstrap -run Integration   # 连接 docker compose 的集成测试
+make race
+make integration            # 连接 docker compose 的集成测试
 ```
 
 ## 代码生成器
+
+所有测试集中在 `test/`，运行方式和 fuzz/覆盖率命令见 [测试说明](test/README.md)。统一使用 `make test` / `make race`，或 `go run ./test/run.go`；直接 `go test ./...` 不会加载集中测试。
 
 源码在 `cmd/willshark-gen`、`internal/gen`，已通过 go.mod 的 `tool` 指令注册，无需单独安装：
 
@@ -104,9 +107,9 @@ routers := &router.Routers{
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/v1/task?page=1&size=20` | 分页列表（按主键倒序），`size` ≤ 100 |
+| GET | `/v1/task?page=1&size=20` | 分页列表（按主键倒序），`size` ≤ 100，`page` ≤ 10000（更深的翻页请改用游标） |
 | GET | `/v1/task/:id` | 详情，不存在返回 404 / code 9004 |
-| POST | `/v1/task` | 创建；`NOT NULL` 且无默认值的列为必填，`varchar(n)` 校验长度 |
+| POST | `/v1/task` | 创建；`NOT NULL` 且无默认值的列为必填（数值列生成指针类型，`0` 是合法值），`varchar(n)` 校验长度 |
 | PUT | `/v1/task/:id` | 部分更新：只修改传入的字段；存在性检查与回读走主库 |
 | DELETE | `/v1/task/:id` | 删除，不存在返回 404 |
 
@@ -121,8 +124,13 @@ $ curl -XPUT localhost:8899/v1/task/1022 -d '{"cmd":"updated","pid":42}' -H 'Con
 SQL 到 Go 的映射规则：
 - 类型：`tinyint→int8`、`int→int32`、`bigint unsigned→uint64`、`decimal→string`（避免精度丢失）、`datetime→time.Time`、`blob→[]byte`、`bit(1)→bool`
 - 可空列生成指针类型；`create_time/created_at` 等列自动加 `autoCreateTime`，`update_time/updated_at` 加 `autoUpdateTime`
+- 非自增主键进入创建参数；整数主键允许 `0`，并显式禁止 GORM 将其当作自增列
+- 带 SQL `DEFAULT` 的列在创建参数中区分省略与显式零值：省略时由数据库应用默认值，并从主库回读实际结果；显式 `0`、`false`、空字符串按传入值写入
 - 字段名遵循 Go 惯例（`job_id→JobID`、`tenantId→TenantID`）；JSON 名保持列名；列注释作为字段注释和校验提示中的字段名
 - 表必须有单列主键才能生成 CRUD；否则用 `model` 命令只生成 entity
+- SQL 文件中的 `-- `、`#`、`/* */` 注释会被忽略
+
+生成器提供开发骨架和通用 CRUD。认证、权限、租户隔离、业务事务与幂等需要按业务实现；当前生成接口未内置这些策略。更新 DTO 中的 `null` 表示不修改，若业务需要将列清空为 SQL NULL，需要单独设计该参数语义。
 
 ## 新增接口（手写）
 
@@ -138,8 +146,10 @@ SQL 到 Go 的映射规则：
 3. 路由一行：`grp.POST("", httpx.Handle(r.Svc.Create))`
 4. 在 `bootstrap/app.go` 的 `wire` 中组装依赖
 
-`httpx.Handle` 依次绑定查询参数（`form`）、请求体（JSON / 表单）、路径参数（`uri`，优先级最高），统一校验一次，
-输出 `{"code":200,"message":"请求成功","data":...}`。`pkg/errs` 的错误映射为 HTTP 状态码 + 业务码；
+`httpx.Handle` 依次绑定查询参数（`form`）、请求体（JSON / 表单）、路径参数（`uri`，优先级最高），统一校验一次；
+查询参数 / 表单 / 路径参数只绑定显式声明了 `form` / `uri` tag 的字段（gin 默认会按字段名绑定未打 tag 的字段，例如 `json:"-"` 的内部字段），
+输出 `{"code":200,"message":"请求成功","data":...}`。`pkg/errs` 的错误映射为 HTTP 状态码 + 业务码
+（底层原因是客户端断开导致的 ctx 取消时返回 499 / code 4990，不记 error 日志；超时返回 504 / code 9005）；
 前端只认 HTTP 200 时设置 `http.alwaysOK: true`。
 
 Swagger 注释写在 service 方法上，更新文档（`app.swagger: true` 时访问 `/swagger/index.html`）：
@@ -174,8 +184,8 @@ func (j *OrderJob) Run(ctx context.Context) error {
 ```
 
 调度器（`pkg/scheduler`）的行为：
-- `Every` 为固定间隔（上一轮结束后开始计时），同一任务在进程内串行执行，不会重叠
-- `WithLock` 获取不到锁时本轮跳过；锁 key 为 `cron:<app.name>:<任务名>`，ttl 应大于最长执行时间
+- `Every` 按固定间隔对齐到时间刻度执行（如 `5m` → 每小时的 :00、:05…，支持亚秒间隔），各副本的刻度一致；同一任务在进程内串行执行，不会重叠，上一轮超过间隔未结束时跳过错过的刻度
+- `WithLock` 多副本部署时每个调度刻度只有一个实例执行：互斥锁 `cron:<app.name>:<任务名>` 防止并发执行，另按刻度占位 `cron:<app.name>:<任务名>:<刻度纳秒>`（不主动释放，ttl 到期删除），避免任务很快结束后时钟稍慢的副本重复执行；ttl 应大于最长执行时间与副本间时钟偏差；获取不到锁时本轮跳过
 - `WithRunOnStart` 启动后立即执行一次
 - `sched.Trigger(name)` 手动触发（例如做一个管理接口）：通过 channel 通知任务循环，不阻塞调用方，执行期间的重复触发会合并
 - panic 被隔离并记录堆栈；每次执行一个 trace span，并记录耗时与错误日志
@@ -206,7 +216,7 @@ mysql:
   ```go
   d.Master().WithContext(ctx).First(&m, id)
   ```
-- 每个节点独立连接池，启动时逐一 ping；`/readyz` 检查所有节点，任一从库不可用时返回 503
+- 每个节点独立连接池，启动时逐一 ping；`/healthz/deps` 检查所有节点，任一节点不可用时返回 503
 - 多主同时写入需配置 `auto_increment_increment/offset` 避免主键冲突，通常建议单写
 - 基于 GORM 官方插件 `gorm.io/plugin/dbresolver`
 
@@ -223,14 +233,18 @@ redis:
 ```
 
 - 三种模式统一返回 `redis.UniversalClient`，业务代码和分布式锁无需区分
-- 集群模式只支持 `db: 0`；`/readyz` 会逐个检查集群主节点
+- 集群模式只支持 `db: 0`；`/healthz/deps` 会逐个检查集群主节点
 - 列表类配置也可用环境变量覆盖：`WS_REDIS_WILLSHARK_ADDRS=n1:6379,n2:6379,n3:6379`
+
+## RocketMQ
+
+`rocketmq.enable: true` 时 `bootstrap.Infra.MQ` 提供已启动的 `Producer`；消费者先 `MQ.Consumer.Subscribe(...)`，再调用 `MQ.StartConsumer()`（不要直接调用 `Consumer.Start()`，否则退出时不会关闭消费者）。
 
 ## 配置
 
 - 文件：`envconfig/<env>_config.yaml`；env 取值优先级：`$APP_ENV` > 第一个命令行参数 > `dev`
 - 配置目录可用 `WS_CONFIG_DIR` 修改
-- **环境变量覆盖配置文件**：`WS_` + 大写的配置路径，`.` 换成 `_`（只能覆盖文件中已有或有默认值的键；map 的键会被转为小写）
+- **环境变量覆盖配置文件**：`WS_` + 大写的配置路径，`.` 换成 `_`；文件中没写的键也可以覆盖（如 pro 模板中没有的 `WS_REDIS_WILLSHARK_MODE`），但 mysql / redis 的连接名必须在文件中出现（map 的键会被转为小写），`replicas` / `sources` 列表不支持环境变量
 
 ```bash
 WS_MYSQL_WILLSHARK_PASSWORD=xxx WS_HTTP_PORT=9000 ./willshark pro
@@ -252,6 +266,9 @@ docker run -e WS_MYSQL_WILLSHARK_HOST=... -e WS_MYSQL_WILLSHARK_PASSWORD=... \
            -e WS_REDIS_WILLSHARK_ADDR=... willshark pro
 ```
 
+镜像默认以 `pro` 环境启动：未注入数据库等配置时校验失败并退出，避免把 dev 配置（swagger、debug 日志、记录请求体）带上线。
+本地 `docker compose` 的 MySQL / Redis 只监听 `127.0.0.1`。
+
 ## 目录结构
 
 ```
@@ -261,6 +278,7 @@ envconfig/          # <env>_config.yaml + 强类型配置
 core/               # 基础设施：mysql（读写分离）、redis（单机/集群/哨兵）、tracing、rocketmq
 cmd/willshark-gen/  # 代码生成器入口
 internal/gen/       # 代码生成器实现与模板
+test/               # 集中测试、原生 overlay 运行入口（make test / make race）
 pkg/
 ├── errs/           # 业务错误（业务码 + HTTP 状态码 + 提示 + 内部原因）
 ├── httpx/          # Handle / Bind / OK / Fail

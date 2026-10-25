@@ -64,7 +64,7 @@ type (
 		replicas int
 		keys     []uint64
 		ring     map[uint64][]interface{}
-		nodes    map[string]struct{}
+		nodes    map[string]int // 实际虚拟节点数，移除时不能使用全局 replicas
 		lock     sync.RWMutex
 	}
 )
@@ -86,7 +86,7 @@ func NewCustomConsistentHash(replicas int, fn Func) *ConsistentHash {
 		hashFunc: fn,
 		replicas: replicas,
 		ring:     make(map[uint64][]interface{}),
-		nodes:    make(map[string]struct{}),
+		nodes:    make(map[string]int),
 	}
 }
 
@@ -95,14 +95,18 @@ func (h *ConsistentHash) Add(node interface{}) {
 }
 
 func (h *ConsistentHash) AddWithReplicas(node interface{}, replicas int) {
-	h.Remove(node)
 	if replicas > h.replicas {
 		replicas = h.replicas
 	}
 	nodeRepr := repr(node)
 	h.lock.Lock()
 	defer h.lock.Unlock()
-	h.addNode(nodeRepr)
+	// 在同一把锁内先移除再添加，避免并发 Add 同一节点时虚拟节点被重复插入
+	h.removeLocked(nodeRepr)
+	if replicas <= 0 {
+		return
+	}
+	h.nodes[nodeRepr] = replicas
 	for i := 0; i < replicas; i++ {
 		hash := h.hashFunc([]byte(nodeRepr + strconv.Itoa(i)))
 		h.keys = append(h.keys, hash)
@@ -136,19 +140,22 @@ func (h *ConsistentHash) Get(v interface{}) (interface{}, bool) {
 		return nodes[0], true
 	default:
 		innerIndex := h.hashFunc([]byte(innerRepr(v)))
-		pos := int(innerIndex % uint64(len(nodes)))
+		pos := int(innerIndex % uint64(len(nodes))) // #nosec G115 -- 取模结果小于 len(nodes)，转换为 int 不会溢出
 		return nodes[pos], true
 	}
 }
 
 func (h *ConsistentHash) Remove(node interface{}) {
-	nodeRepr := repr(node)
 	h.lock.Lock()
 	defer h.lock.Unlock()
+	h.removeLocked(repr(node))
+}
+
+func (h *ConsistentHash) removeLocked(nodeRepr string) {
 	if !h.containsNode(nodeRepr) {
 		return
 	}
-	for i := 0; i < h.replicas; i++ {
+	for i := 0; i < h.nodes[nodeRepr]; i++ {
 		hash := h.hashFunc([]byte(nodeRepr + strconv.Itoa(i)))
 		index := sort.Search(len(h.keys), func(i int) bool {
 			return h.keys[i] >= hash
@@ -176,10 +183,6 @@ func (h *ConsistentHash) removeRingNode(hash uint64, nodeRepr string) {
 			delete(h.ring, hash)
 		}
 	}
-}
-
-func (h *ConsistentHash) addNode(nodeRepr string) {
-	h.nodes[nodeRepr] = struct{}{}
 }
 
 func (h *ConsistentHash) containsNode(nodeRepr string) bool {

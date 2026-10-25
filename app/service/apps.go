@@ -1,3 +1,4 @@
+// Package service 业务逻辑层：强类型方法供 router（httpx.Handle）、controller 与定时任务复用。
 package service
 
 import (

@@ -6,7 +6,9 @@
 //	mysql.willshark.password  →  WS_MYSQL_WILLSHARK_PASSWORD
 //	http.port                 →  WS_HTTP_PORT
 //
-// 注意：环境变量只能覆盖配置文件中已存在（或有默认值）的键；viper 会把 map 的键转为小写。
+// 结构体中的所有键都可以用环境变量覆盖，即使配置文件中没有写；
+// mysql / redis 等 map 的连接名必须在配置文件中出现（viper 会把 map 的键转为小写）。
+// replicas / sources 等结构体列表不支持环境变量覆盖。
 package config
 
 import (
@@ -14,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 	"willshark/consts"
@@ -191,6 +194,11 @@ func LoadFile(env, path string) (*Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
+	// AutomaticEnv 只对 viper 已知的键生效，这里显式绑定全部键，
+	// 使 WS_REDIS_WILLSHARK_MODE、WS_HTTP_ALWAYSOK 等在文件中缺省时也能生效
+	if err := bindEnvs(v, reflect.TypeFor[Config](), ""); err != nil {
+		return nil, fmt.Errorf("bind env: %w", err)
+	}
 
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
@@ -204,9 +212,43 @@ func LoadFile(env, path string) (*Config, error) {
 	return &c, nil
 }
 
+// bindEnvs 递归为结构体的每个叶子键调用 BindEnv；map[string]struct 按配置文件中已有的键展开
+func bindEnvs(v *viper.Viper, t reflect.Type, prefix string) error {
+	for i := range t.NumField() {
+		f := t.Field(i)
+		name := f.Tag.Get("mapstructure")
+		if name == "" || name == "-" {
+			continue
+		}
+		key := name
+		if prefix != "" {
+			key = prefix + "." + name
+		}
+		var err error
+		switch {
+		case f.Type.Kind() == reflect.Struct:
+			err = bindEnvs(v, f.Type, key)
+		case f.Type.Kind() == reflect.Map && f.Type.Elem().Kind() == reflect.Struct:
+			for sub := range v.GetStringMap(key) {
+				if err = bindEnvs(v, f.Type.Elem(), key+"."+sub); err != nil {
+					break
+				}
+			}
+		case f.Type.Kind() == reflect.Slice && f.Type.Elem().Kind() == reflect.Struct:
+			// 结构体列表无法用单个环境变量表达
+		default:
+			err = v.BindEnv(key)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("app.name", consts.APP_NAME)
-	v.SetDefault("app.id", consts.APP_ID)
+	v.SetDefault("app.name", consts.AppName)
+	v.SetDefault("app.id", consts.AppID)
 	v.SetDefault("http.port", 8899)
 	v.SetDefault("http.readHeaderTimeout", "5s")
 	v.SetDefault("http.readTimeout", "30s")
@@ -297,7 +339,18 @@ func (c *Config) Validate() error {
 	default:
 		add("log.format %q must be json or text", c.Log.Format)
 	}
+	// 这些值为 0 会关闭对应保护：请求头超时（Slowloris）、优雅退出、请求体大小限制
+	if c.HTTP.ReadHeaderTimeout <= 0 {
+		add("http.readHeaderTimeout must be positive")
+	}
+	if c.HTTP.ShutdownTimeout <= 0 {
+		add("http.shutdownTimeout must be positive")
+	}
+	if c.HTTP.MaxBodyBytes <= 0 {
+		add("http.maxBodyBytes must be positive")
+	}
 	durations := map[string]time.Duration{
+		"http.drainWait":         c.HTTP.DrainWait,
 		"http.readHeaderTimeout": c.HTTP.ReadHeaderTimeout,
 		"http.readTimeout":       c.HTTP.ReadTimeout,
 		"http.writeTimeout":      c.HTTP.WriteTimeout,

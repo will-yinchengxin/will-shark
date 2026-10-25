@@ -1,3 +1,4 @@
+// Package middlewares gin 中间件：请求 ID、链路追踪、访问日志、panic 恢复、请求体大小限制、CORS。
 package middlewares
 
 import (
