@@ -1,49 +1,55 @@
 package middlewares
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
+	"slices"
+
+	"github.com/gin-gonic/gin"
 )
 
-func Cors() gin.HandlerFunc {
+const defaultAllowHeaders = "Authorization, Content-Type, X-Token, X-Request-Id"
+
+// Cors 按白名单放行跨域请求
+//   - allowOrigins 包含 "*"：放行任意来源，但不允许携带凭证（cookie）
+//   - 其他情况：仅回写白名单内的 Origin，并允许携带凭证
+//   - 不在白名单内：不写任何 CORS 头，由浏览器拦截
+func Cors(allowOrigins []string) gin.HandlerFunc {
+	allowAll := slices.Contains(allowOrigins, "*")
 	return func(c *gin.Context) {
-		method := c.Request.Method
-		keys := "x-token, X-Token,Authorization,content-type"
-		for k, _ := range c.Request.Header {
-			if keys != "" {
-				keys = keys + ", " + k
-			} else {
-				keys += k
-			}
+		origin := c.GetHeader("Origin")
+		if origin == "" {
+			c.Next()
+			return
 		}
-		c.Header("Access-Control-Allow-Origin", c.Request.Header.Get("Origin"))
-		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		c.Header("Access-Control-Allow-Headers", keys)
-		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Max-Age", "86400")
-		// 放行所有OPTIONS方法
-		if method == "OPTIONS" {
+
+		h := c.Writer.Header()
+		h.Add("Vary", "Origin")
+		switch {
+		case allowAll:
+			h.Set("Access-Control-Allow-Origin", "*")
+		case slices.Contains(allowOrigins, origin):
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Allow-Credentials", "true")
+		default:
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			c.Next()
+			return
+		}
+
+		if c.Request.Method == http.MethodOptions {
+			allowHeaders := c.GetHeader("Access-Control-Request-Headers")
+			if allowHeaders == "" {
+				allowHeaders = defaultAllowHeaders
+			}
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", allowHeaders)
+			h.Set("Access-Control-Max-Age", "86400")
 			c.AbortWithStatus(http.StatusNoContent)
+			return
 		}
 		c.Next()
 	}
 }
-
-/*
-func CorsHandler() gin.HandlerFunc {
-	return func(context *gin.Context) {
-		context.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		context.Header("Access-Control-Allow-Methods", "*")
-		context.Header("Access-Control-Allow-Headers", "*")
-		context.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers,Cache-Control,Content-Language,Content-Type,Expires,Last-Modified,Pragma,FooBar") // 跨域关键设置 让浏览器可以解析
-		context.Header("Access-Control-Max-Age", "172800")                                                                                                                                                           // 缓存请求信息 单位为秒
-		context.Header("Access-Control-Allow-Credentials", "false")                                                                                                                                                  //  跨域请求是否需要带cookie信息 默认设置为true
-		context.Header("content-type", "application/json")                                                                                                                                                           // 设置返回格式是json
-		//Release all option pre-requests
-		if context.Request.Method == http.MethodOptions {
-			context.JSON(http.StatusOK, "Options Request!")
-		}
-		context.Next()
-	}
-}
-*/

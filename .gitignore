@@ -1,12 +1,5 @@
 .idea/
-\.idea/
-go.sum
 .DS_Store
-tests/
 vendor/
-./docs
-./willshark.log
-.willshark.log
-\.cmd/
-./cmd/
-cmd/
+tests/
+*.log

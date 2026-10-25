@@ -1,23 +1,24 @@
+# 本地开发配置，配合仓库根目录 docker-compose.yaml 使用（docker compose up -d）
+# 注意：这里只能放本地开发用的假凭证，真实环境的密码不得提交到仓库
 dev:
   mysql:
     willshark:
-      host: 172.16.27.96
+      host: 127.0.0.1
       port: 3306
-      user: will
-      password: 'admin@123'
-      dataBase: vrpm
-      parseTime: True
+      user: willshark
+      password: willshark
+      dataBase: willshark
       maxIdleConns: 10
       maxOpenConns: 30
       connMaxLifetime: 28800
       connMaxIdletime: 7200
   redis:
     willshark:
-      host: 172.16.27.46:9736
-      password: "hasKITs!"
+      host: 127.0.0.1:6379
+      password: ""
       database: 0
       maxIdleNum: 50
-      maxActive: 10000
+      maxActive: 200
       maxIdleTimeout: 600
       connectTimeout: 1
       readTimeout: 2
@@ -27,6 +28,12 @@ dev:
     host:
       - 127.0.0.1:9876
     retry: 3
-  jaeger:
+  # 链路追踪：OTLP/HTTP，Jaeger(>=1.35) / SkyWalking / ARMS 等均可接收
+  tracing:
     enable: false
-    host: http://127.0.0.1:14268
+    endpoint: 127.0.0.1:4318
+    insecure: true
+  # 跨域白名单；"*" 表示任意来源但不允许携带 cookie
+  cors:
+    allowOrigins:
+      - "*"

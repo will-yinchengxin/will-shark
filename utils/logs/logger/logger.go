@@ -20,6 +20,19 @@ var (
 func init() {
 	_, currentFile, _, _ := runtime.Caller(0)
 	projectRoot = filepath.Dir(filepath.Dir(currentFile))
+	// 默认输出到 stderr，保证在 LogToFile 之前（或打开文件失败时）调用也不会 panic
+	logger = newStderrLogger()
+}
+
+func newStderrLogger() *log.Logger {
+	l := log.NewWithOptions(os.Stderr, log.Options{
+		ReportTimestamp: true,
+		TimeFormat:      time.RFC3339,
+		Prefix:          "<WillShark 🚀>",
+		Level:           setLogLevel(),
+	})
+	l.SetFormatter(log.TextFormatter)
+	return l
 }
 
 func LogToFile() error {
@@ -28,7 +41,7 @@ func LogToFile() error {
 		logFile = "willshark.log"
 	)
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		fmt.Println("日志目录不存在，使用当前目录下的 wrollup.log")
+		fmt.Println("日志目录不存在，使用当前目录下的 willshark.log")
 		logFile = "./" + logFile
 	} else {
 		fmt.Println("日志目录存在，日志将输出到:", logFile)
@@ -48,13 +61,6 @@ func LogToFile() error {
 		Level: setLogLevel(),
 	})
 	fileLogger.SetFormatter(log.TextFormatter)
-
-	logger = log.NewWithOptions(os.Stderr, log.Options{
-		ReportTimestamp: true,
-		TimeFormat:      time.RFC3339,
-		Prefix:          "<WillShark 🚀>",
-	})
-	logger.SetFormatter(log.TextFormatter)
 
 	return nil
 }
@@ -92,36 +98,36 @@ func getCallerInfo() string {
 	return fmt.Sprintf("%s:%d", relPath, line)
 }
 
+// emit 同时写 stderr 与文件（文件日志可能未初始化）
+func emit(fn func(l *log.Logger)) {
+	fn(logger)
+	if fileLogger != nil {
+		fn(fileLogger)
+	}
+}
+
 func Info(msg string) {
 	caller := getCallerInfo()
-	logger.Info(msg, "caller", caller)
-	fileLogger.Info(msg, "caller", caller)
+	emit(func(l *log.Logger) { l.Info(msg, "caller", caller) })
 }
 
 func Infof(format string, args ...interface{}) {
-	/*
-		format: "%s %s",
-		args: []interface{}{"foo", "bar"},
-	*/
 	caller := getCallerInfo()
-	logger.Infof(format, args, caller)
-	fileLogger.Infof(format, args, caller)
+	msg := fmt.Sprintf(format, args...)
+	emit(func(l *log.Logger) { l.Info(msg, "caller", caller) })
 }
 
 func Error(msg string) {
 	caller := getCallerInfo()
-	logger.Error(msg, "caller", caller)
-	fileLogger.Error(msg, "caller", caller)
+	emit(func(l *log.Logger) { l.Error(msg, "caller", caller) })
 }
 
 func Debug(msg string) {
 	caller := getCallerInfo()
-	logger.Debug(msg, "caller", caller)
-	fileLogger.Debug(msg, "caller", caller)
+	emit(func(l *log.Logger) { l.Debug(msg, "caller", caller) })
 }
 
 func Warn(msg string) {
 	caller := getCallerInfo()
-	logger.Warn(msg, "caller", caller)
-	fileLogger.Warn(msg, "caller", caller)
+	emit(func(l *log.Logger) { l.Warn(msg, "caller", caller) })
 }

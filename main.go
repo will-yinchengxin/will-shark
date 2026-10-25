@@ -5,10 +5,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	_ "time/tzdata" // 内置时区数据，容器内无需安装 tzdata
 	"willshark/core"
 	"willshark/di"
 	"willshark/utils/logs/logger"
 )
+
+// version 构建时通过 -ldflags "-X main.version=..." 注入
+var version = "dev"
 
 func main() {
 	core.Start()
@@ -21,6 +25,7 @@ func main() {
 	core.StopModuleFunction = append(core.StopModuleFunction, app.Jobs.RegisterJobs())
 
 	// listen to the stop signal
+	logger.Info("willshark version: " + version)
 	go listenToSystemSignals()
 
 	// start server

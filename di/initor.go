@@ -74,7 +74,7 @@ func InitGinEngine(router *router.Routers) (*gin.Engine, func()) {
 	// set swagger doc tools
 	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// set the global middleware
-	engine.Use(middlewares.Cors())
+	engine.Use(middlewares.Cors(core.CorsAllowOrigins()))
 	// init router
 	engine = router.SetupRouter(engine)
 
@@ -85,16 +85,14 @@ func InitMysql() (*dao.MysqlPool, func()) {
 	dbPool, err := core.GetDB(consts.DB_NAME)
 	if err != nil {
 		panic("db is error: " + err.Error())
-		return nil, func() {}
 	}
-	return &dao.MysqlPool{dbPool}, func() {}
+	return &dao.MysqlPool{DB: dbPool}, func() {}
 }
 
 func InitRedis() (*rc.Redis, func()) {
 	redisPool, err := core.GetRedisDB(consts.Cache_NAME)
 	if err != nil {
 		panic("redis is error: " + err.Error())
-		return nil, func() {}
 	}
 
 	return &rc.Redis{Cache: redisPool}, func() {}

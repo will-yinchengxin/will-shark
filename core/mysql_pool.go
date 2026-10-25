@@ -1,20 +1,23 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"gorm.io/gorm/schema"
 	"log"
 	"os"
 	"time"
 	"willshark/consts"
 	loggerv1 "willshark/utils/logs/logger"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 type MysqlConn struct {
@@ -29,37 +32,39 @@ type MysqlConn struct {
 	ConnMaxIdletime time.Duration `yaml:"connMaxIdletime,omitempty"`
 }
 
-var MysqlConfig map[string]interface{}
-
+// MysqlPool 启动时一次性初始化，之后只读
 var MysqlPool map[string]*gorm.DB
 
 func initMysql() func() {
-	MysqlConfig, err := GetMapConfig(CoreConfig, "mysql", MysqlConn{})
+	mysqlConfig, err := GetMapConfig(CoreConfig, "mysql", MysqlConn{})
 	if err != nil {
 		panic(err)
 	}
-	if len(MysqlConfig) < 1 {
+	if len(mysqlConfig) < 1 {
 		panic("init gorm pool config failed, mysql config not found")
 	}
 
 	MysqlPool = make(map[string]*gorm.DB)
-	for name, val := range MysqlConfig {
-		if db, err := initGorm(val.(*MysqlConn)); err == nil && db != nil {
-			MysqlPool[name] = db
+	for name, val := range mysqlConfig {
+		db, err := initGorm(val.(*MysqlConn))
+		if err != nil {
+			panic("init mysql [" + name + "] failed: " + err.Error())
 		}
+		MysqlPool[name] = db
 	}
 
 	return func() {
 		for key, value := range MysqlPool {
 			sqlDb, err := value.DB()
-			err = sqlDb.Close()
+			if err == nil {
+				err = sqlDb.Close()
+			}
 			if err != nil {
 				loggerv1.Error("MySQL[ " + key + " ]Closed Err:" + err.Error())
 				continue
 			}
 			loggerv1.Info("MySQL[ " + key + " ]Closed Success!")
 		}
-
 	}
 }
 
@@ -84,9 +89,8 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 		),
 	})
 	if err != nil {
-		logrus.Fatal(err.Error())
+		return nil, err
 	}
-	//db = db.Debug() // start debug mod
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
@@ -96,35 +100,41 @@ func initGorm(conn *MysqlConn) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Second * conn.ConnMaxLifetime)
 	sqlDB.SetConnMaxIdleTime(time.Second * conn.ConnMaxIdletime)
 
-	err = db.Callback().Create().Before("gorm:before_create").Register("callBackBeforeName", before)
-	if err != nil {
-		fmt.Println(err)
+	if err = RegisterTraceCallbacks(db); err != nil {
+		return nil, err
 	}
-	withCallback(db)
 	return db, nil
 }
 
-func withCallback(db *gorm.DB) {
-	_ = db.Callback().Query().Before("gorm:query").Register("callBackBeforeName", before)
-	_ = db.Callback().Delete().Before("gorm:before_delete").Register("callBackBeforeName", before)
-	_ = db.Callback().Update().Before("gorm:setup_reflect_value").Register("callBackBeforeName", before)
-	_ = db.Callback().Row().Before("gorm:row").Register("callBackBeforeName", before)
-	_ = db.Callback().Raw().Before("gorm:raw").Register("callBackBeforeName", before)
+// RegisterTraceCallbacks 为 gorm 注册链路追踪回调
+func RegisterTraceCallbacks(db *gorm.DB) error {
+	cb := db.Callback()
+	return errors.Join(
+		cb.Create().Before("gorm:before_create").Register("callBackBeforeName", before),
+		cb.Query().Before("gorm:query").Register("callBackBeforeName", before),
+		cb.Delete().Before("gorm:before_delete").Register("callBackBeforeName", before),
+		cb.Update().Before("gorm:setup_reflect_value").Register("callBackBeforeName", before),
+		cb.Row().Before("gorm:row").Register("callBackBeforeName", before),
+		cb.Raw().Before("gorm:raw").Register("callBackBeforeName", before),
 
-	_ = db.Callback().Create().After("gorm:after_create").Register("callBackAfterName", after)
-	_ = db.Callback().Query().After("gorm:after_query").Register("callBackAfterName", after)
-	_ = db.Callback().Delete().After("gorm:after_delete").Register("callBackAfterName", after)
-	_ = db.Callback().Update().After("gorm:after_update").Register("callBackAfterName", after)
-	_ = db.Callback().Row().After("gorm:row").Register("callBackAfterName", after)
-	_ = db.Callback().Raw().After("gorm:raw").Register("callBackAfterName", after)
+		cb.Create().After("gorm:after_create").Register("callBackAfterName", after),
+		cb.Query().After("gorm:after_query").Register("callBackAfterName", after),
+		cb.Delete().After("gorm:after_delete").Register("callBackAfterName", after),
+		cb.Update().After("gorm:after_update").Register("callBackAfterName", after),
+		cb.Row().After("gorm:row").Register("callBackAfterName", after),
+		cb.Raw().After("gorm:raw").Register("callBackAfterName", after),
+	)
 }
 
+// before 使用全局 tracer，未开启链路追踪时为 noop，不会 panic
 func before(db *gorm.DB) {
-
-	_, span := Trace.Tracer("gorm").Start(db.Statement.Context, db.Statement.Table)
+	ctx := db.Statement.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_, span := otel.Tracer("gorm").Start(ctx, db.Statement.Table)
 	db.InstanceSet(consts.JaegerStartTime, time.Now())
 	db.InstanceSet(consts.JaegerGormSpanKey, span)
-	return
 }
 
 func after(db *gorm.DB) {
@@ -136,39 +146,30 @@ func after(db *gorm.DB) {
 	if !ok {
 		return
 	}
-	_ts, isExist := db.InstanceGet(consts.JaegerStartTime)
-	if !isExist {
+	defer span.End()
+	if !span.IsRecording() {
 		return
 	}
-	ts, ok := _ts.(time.Time)
-	if !ok {
-		return
+	if db.Error != nil && !errors.Is(db.Error, gorm.ErrRecordNotFound) {
+		span.RecordError(db.Error)
+		span.SetStatus(codes.Error, db.Error.Error())
 	}
-	if db.Error != nil {
-		span.SetAttributes(attribute.String("error", db.Error.Error()))
-	}
-	//sql语句
-	span.SetAttributes(attribute.String("sql", db.Dialector.Explain(db.Statement.SQL.String(), db.Statement.Vars...)))
-	//影响条数
-	span.SetAttributes(attribute.String("affectedRows", fmt.Sprintf("%d 条", db.Statement.RowsAffected)))
-	//执行时间
-	span.SetAttributes(attribute.String("executeTime", fmt.Sprintf("%d ms", time.Since(ts).Milliseconds())))
-	span.End()
-	return
-}
-
-func GetDB(key string) (db *gorm.DB, err error) {
-	db, ok := MysqlPool[key]
-	if !ok {
-		if config, ok := MysqlConfig[key]; !ok {
-			return db, errors.New(key + " dbConfig doesn't exist")
-		} else {
-			if db, err = initGorm(config.(*MysqlConn)); err != nil {
-				return db, errors.New(key + " dbConfig Initialization failure")
-			} else {
-				MysqlPool[key] = db
-			}
+	// 只记录带占位符的 SQL，不记录参数值，避免敏感数据进入链路系统
+	span.SetAttributes(
+		attribute.String("db.statement", db.Statement.SQL.String()),
+		attribute.Int64("db.rows_affected", db.Statement.RowsAffected),
+	)
+	if ts, ok := db.InstanceGet(consts.JaegerStartTime); ok {
+		if start, ok := ts.(time.Time); ok {
+			span.SetAttributes(attribute.Int64("db.execute_ms", time.Since(start).Milliseconds()))
 		}
 	}
-	return
+}
+
+func GetDB(key string) (*gorm.DB, error) {
+	db, ok := MysqlPool[key]
+	if !ok {
+		return nil, errors.New("mysql [" + key + "] not initialized, check the mysql config")
+	}
+	return db, nil
 }

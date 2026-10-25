@@ -2,7 +2,7 @@
 
 > A lightweight and powerful Go development framework with code generation capabilities
 
-[![Go Version](https://img.shields.io/badge/Go-1.18+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## ✨ Features
@@ -13,7 +13,7 @@
 - RocketMQ integration
 - Cron job support
 - Dependency injection (Wire)
-- Distributed tracing (Jaeger)
+- Distributed tracing (OpenTelemetry OTLP: Jaeger / SkyWalking / ARMS)
 
 ### 🔧 Code Generator
 - Auto-generate CRUD code from SQL
@@ -28,39 +28,36 @@
 - Etcd integration
 - Prometheus metrics
 
+### Local Development
+```bash
+docker compose up -d        # MySQL 8 + Redis 7, seeded from sql/init
+go run . dev                # loads envconfig/dev_config.yaml
+go test -race ./...
+```
+
 ### Configuration
-Create your configuration file in `./envconfig`, for example `dev_config.yaml`:
+Config file: `./envconfig/<env>_config.yaml`, env is the first CLI argument (default `dev`).
+See `envconfig/dev_config.yaml` for all keys (`mysql`, `redis`, `rocketmq`, `tracing`, `cors`).
+
+> Never commit real credentials. The dev config only contains local docker-compose credentials.
 
 ```yaml
 dev:
-  mysql:
-    will:
-      Host: 172.16.161.54
-      Port: 3306
-      User: root
-      Password: '123456'
-      DataBase: will
-      ParseTime: True
-      MaxIdleConns: 10
-      MaxOpenConns: 30
-      ConnMaxLifetime: 28800
-      ConnMaxIdletime: 7200
-  redis:
-    will:
-      host: 172.16.161.54:6379
-      password: ""
-      database: 0
-      maxIdleNum: 50
-      maxActive: 5000
-      maxIdleTimeout: 600
-      connectTimeout: 1
-      readTimeout: 2
-  rocketmq:
-    GroupName: test-rocket
-    Topic: test-rocket
-    Host:
-      - 127.0.0.1:9876
-    Retry: 3
+  tracing:                 # OTLP/HTTP; disabled -> noop tracer
+    enable: false
+    endpoint: 127.0.0.1:4318
+    insecure: true
+  cors:                    # whitelist; "*" = any origin without credentials
+    allowOrigins:
+      - "*"
+```
+
+### Docker
+```bash
+docker build -t willshark --build-arg VERSION=$(git rev-parse --short HEAD) .
+# base images can be redirected to a private registry:
+#   --build-arg GO_IMAGE=harbor.example.com/library/golang:1.26-alpine
+docker run -v $PWD/envconfig/pro_config.yaml:/app/envconfig/pro_config.yaml willshark pro
 ```
 
 ### Code Generation

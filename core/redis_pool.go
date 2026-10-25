@@ -9,10 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	RedisConfig map[string]interface{}
-	RedisPool   map[string]*redis.Client
-)
+// RedisPool 启动时一次性初始化，之后只读
+var RedisPool map[string]*redis.Client
 
 type RedisConn struct {
 	Host           string `yaml:"host,omitempty"`
@@ -26,22 +24,20 @@ type RedisConn struct {
 }
 
 func initRedis() func() {
-	RedisConfig, err := GetMapConfig(CoreConfig, "redis", RedisConn{})
+	redisConfig, err := GetMapConfig(CoreConfig, "redis", RedisConn{})
 	if err != nil {
 		return func() {}
 	}
-	if len(RedisConfig) < 1 {
+	if len(redisConfig) < 1 {
 		panic("init redis pool config failed, redis config not found")
 	}
 	RedisPool = make(map[string]*redis.Client)
-	for name, val := range RedisConfig {
+	for name, val := range redisConfig {
 		rdb, err := initRedisClient(val.(*RedisConn))
 		if err != nil {
-			panic("initRedisClient err: " + err.Error())
+			panic("init redis [" + name + "] failed: " + err.Error())
 		}
-		if rdb != nil {
-			RedisPool[name] = rdb
-		}
+		RedisPool[name] = rdb
 	}
 
 	return func() {
@@ -79,8 +75,10 @@ func initRedisClient(conf *RedisConn) (*redis.Client, error) {
 	client := redis.NewClient(options)
 
 	// 测试连接
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 
@@ -90,17 +88,7 @@ func initRedisClient(conf *RedisConn) (*redis.Client, error) {
 func GetRedisDB(key string) (*redis.Client, error) {
 	client, ok := RedisPool[key]
 	if !ok {
-		config, exists := RedisConfig[key]
-		if !exists {
-			return nil, errors.New(key + " redis dbConfig doesn't exist")
-		}
-
-		newClient, err := initRedisClient(config.(*RedisConn))
-		if err != nil {
-			return nil, errors.New(key + " redis dbConfig Initialization failure")
-		}
-		RedisPool[key] = newClient
-		return newClient, nil
+		return nil, errors.New("redis [" + key + "] not initialized, check the redis config")
 	}
 	return client, nil
 }

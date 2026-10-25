@@ -1,0 +1,8 @@
+.git
+.idea
+.claude
+gen
+*.log
+docs/swagger.*
+Dockerfile
+docker-compose.yaml

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"github.com/gin-gonic/gin"
 	"willshark/app/do/request"
 	"willshark/app/service"
@@ -15,19 +14,14 @@ type Apps struct {
 }
 
 func (apps *Apps) AppList(ctx *gin.Context) {
-	var (
-		req           request.Apps
-		spanFatherCtx context.Context
-	)
+	var req request.Apps
 	if errMsg := apps.RequestValidate.ParseJson(ctx, &req); errMsg != "" {
 		utils.MessageError(ctx, errMsg)
 		return
 	}
 
-	spanFather, _ := ctx.Get("traceRoot")
-	spanFatherCtx = spanFather.(context.Context)
-
-	res, codeType := apps.App.List(req, spanFatherCtx)
+	// 链路追踪中间件已把 span 放入 request context
+	res, codeType := apps.App.List(req, ctx.Request.Context())
 	if codeType.Code != 0 {
 		utils.Error(ctx, codeType)
 		return
@@ -44,11 +38,7 @@ func (apps *Apps) AppList(ctx *gin.Context) {
 // @Produce json
 // @Router /v1/apps/redis [post]
 func (apps *Apps) AppInfo(ctx *gin.Context) {
-	var (
-		spanFatherCtx context.Context
-	)
-	spanFatherCtx = context.Background()
-	res, codeType := apps.App.Info(spanFatherCtx)
+	res, codeType := apps.App.Info(ctx.Request.Context())
 	if codeType.Code != 0 {
 		utils.Error(ctx, codeType)
 		return

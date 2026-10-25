@@ -3,10 +3,8 @@ package lock
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"sync/atomic"
-	"time"
 	"willshark/app/modules/redis"
 	"willshark/utils/logs/logger"
 	"willshark/utils/strings"
@@ -23,10 +21,6 @@ type RedisLock struct {
 	seconds uint32
 	key     string
 	id      string
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 func NewRedisLock(store *redis.Redis, key string) *RedisLock {
@@ -47,7 +41,7 @@ func (rl *RedisLock) Acquire() (bool, error) {
 
 func (rl *RedisLock) AcquireCtx(ctx context.Context) (bool, error) {
 	seconds := atomic.LoadUint32(&rl.seconds)
-	resp, err := rl.store.Eval(lockCommand,
+	resp, err := rl.store.Eval(ctx, lockCommand,
 		[]string{rl.key}, rl.id, strconv.Itoa(int(seconds)*millisPerSecond+tolerance))
 
 	if err != nil {
@@ -74,7 +68,7 @@ func (rl *RedisLock) Release() (bool, error) {
 }
 
 func (rl *RedisLock) ReleaseCtx(ctx context.Context) (bool, error) {
-	resp, err := rl.store.Eval(delCommand, []string{rl.key}, rl.id)
+	resp, err := rl.store.Eval(ctx, delCommand, []string{rl.key}, rl.id)
 	if err != nil {
 		logger.Error(redis.ReleaseCtxErr.Error() + err.Error())
 

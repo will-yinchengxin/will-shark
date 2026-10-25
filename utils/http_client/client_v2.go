@@ -2,84 +2,96 @@ package http_client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 )
 
-var (
-	// X-PS-Flag
-	AuthHeader = "Authorization"
-	Token      = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZW5hbnRfaWQiOiJ2aWRlb3NvbGFyIiwiaWF0IjoxNTE2MjM5MDIyLCJpc3MiOiJ2aWRlb3NvbGFyIiwiZXhwIjoxNzQ1NjgzMjAwfQ.xDEvDbDTdTZbBxK2dPjNjsBAeqTr45xDCxWiO21bGZw"
-)
+const AuthHeader = "Authorization"
 
 type HttpClient struct {
 	BaseUrl string
 	Client  *http.Client
+	// Token 完整的 Authorization 头内容，如 "Bearer xxx"；为空则不发送
+	// 从配置或环境变量注入，禁止写死在代码中
+	Token string
 }
 
 func NewHttpClient(baseUrl string) *HttpClient {
 	return &HttpClient{
 		BaseUrl: baseUrl,
-		Client:  &http.Client{},
+		Client:  &http.Client{Timeout: DefaultTimeout},
 	}
 }
 
-func (h *HttpClient) SetHeader() *HttpClient {
-	return h
+// WithToken 设置 Authorization 头
+func (c *HttpClient) WithToken(token string) *HttpClient {
+	c.Token = token
+	return c
 }
 
 func (c *HttpClient) Get(url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseUrl+url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add(AuthHeader, Token)
-	return c.Client.Do(req)
+	return c.GetCtx(context.Background(), url)
+}
+
+func (c *HttpClient) GetCtx(ctx context.Context, url string) (*http.Response, error) {
+	return c.do(ctx, http.MethodGet, url, nil)
 }
 
 func (c *HttpClient) PostJSON(url string, body interface{}) (*http.Response, error) {
-	jsonData, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPost, c.BaseUrl+url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add(AuthHeader, Token)
-	req.Header.Set("Content-Type", "application/json")
-	return c.Client.Do(req)
+	return c.PostJSONCtx(context.Background(), url, body)
+}
+
+func (c *HttpClient) PostJSONCtx(ctx context.Context, url string, body interface{}) (*http.Response, error) {
+	return c.doJSON(ctx, http.MethodPost, url, body)
 }
 
 func (c *HttpClient) PutJSON(url string, body interface{}) (*http.Response, error) {
+	return c.PutJSONCtx(context.Background(), url, body)
+}
+
+func (c *HttpClient) PutJSONCtx(ctx context.Context, url string, body interface{}) (*http.Response, error) {
+	return c.doJSON(ctx, http.MethodPut, url, body)
+}
+
+func (c *HttpClient) Delete(url string) (*http.Response, error) {
+	return c.DeleteCtx(context.Background(), url)
+}
+
+func (c *HttpClient) DeleteCtx(ctx context.Context, url string) (*http.Response, error) {
+	return c.do(ctx, http.MethodDelete, url, nil)
+}
+
+func (c *HttpClient) doJSON(ctx context.Context, method, url string, body interface{}) (*http.Response, error) {
 	jsonData, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPut, c.BaseUrl+url, bytes.NewBuffer(jsonData))
+	return c.do(ctx, method, url, bytes.NewReader(jsonData))
+}
+
+func (c *HttpClient) do(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseUrl+url, body)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add(AuthHeader, Token)
-	req.Header.Set("Content-Type", "application/json")
-	return c.Client.Do(req)
-}
-
-func (c *HttpClient) Delete(url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, c.BaseUrl+url, nil)
-	if err != nil {
-		return nil, err
+	if c.Token != "" {
+		req.Header.Set(AuthHeader, c.Token)
 	}
-	req.Header.Add(AuthHeader, Token)
+	if body != nil {
+		req.Header.Set(ContentType, Json)
+	}
 	return c.Client.Do(req)
 }
 
+// HandleResponse 读取并关闭响应体；非 200 时返回错误
 func HandleResponse(resp *http.Response) ([]byte, error) {
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, errors.New("HTTP request failed with status code: " + resp.Status)
 	}
-	defer resp.Body.Close()
 	return io.ReadAll(resp.Body)
 }

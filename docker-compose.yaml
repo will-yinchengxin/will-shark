@@ -1,0 +1,29 @@
+# 本地开发依赖：docker compose up -d
+# 凭证仅用于本地开发，与 envconfig/dev_config.yaml 对应
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: willshark-root
+      MYSQL_DATABASE: willshark
+      MYSQL_USER: willshark
+      MYSQL_PASSWORD: willshark
+      TZ: Asia/Shanghai
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uwillshark", "-pwillshark"]
+      interval: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 30

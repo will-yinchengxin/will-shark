@@ -1,20 +1,31 @@
 package middlewares
 
 import (
-	"context"
-	"github.com/gin-gonic/gin"
 	"willshark/consts"
-	"willshark/core"
+
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 )
 
+// StartTrace 从请求头提取上游 trace（W3C traceparent），并把 span 放入 c.Request.Context()
+// 未开启链路追踪时全局 tracer 为 noop，开销可忽略
 func StartTrace() gin.HandlerFunc {
+	tr := otel.Tracer(consts.JaegerRouter)
 	return func(c *gin.Context) {
-		if core.Trace != nil {
-			tr := core.Trace.Tracer(consts.JaegerRouter)
-			ctxRoot, span := tr.Start(context.Background(), c.Request.URL.Path)
-			c.Set(consts.JaegerContext, ctxRoot)
-			defer span.End()
-			c.Next()
+		ctx := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
+		ctx, span := tr.Start(ctx, c.Request.Method+" "+c.Request.URL.Path)
+		defer span.End()
+
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+
+		status := c.Writer.Status()
+		span.SetAttributes(attribute.Int("http.response.status_code", status))
+		if status >= 500 {
+			span.SetStatus(codes.Error, "")
 		}
 	}
 }
