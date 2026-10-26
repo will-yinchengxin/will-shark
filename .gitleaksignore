@@ -1,0 +1,4 @@
+# 已知历史泄露：videosolar 租户的硬编码 Bearer JWT（exp=2025-04-26，已过期），
+# 已在 84b4a44 中删除并改为 WithToken 注入。签名密钥需在签发方轮换。
+# 仅忽略这一条历史记录，新增的任何泄露仍会报错。
+6fef81467d325fdacbbd0797c710628c93831287:will_tools/http_client/client_v2.go:jwt:14

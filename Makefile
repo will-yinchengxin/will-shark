@@ -1,4 +1,4 @@
-.PHONY: build test race integration cover vet tidy fuzz check
+.PHONY: build test race integration cover vet tidy fuzz check secrets
 
 build:
 	go build ./...
@@ -34,3 +34,7 @@ fuzz:
 	go run ./test/run.go ./pkg/stringx -run='^$$' -fuzz='^FuzzStringHelpers$$' -fuzztime=$(FUZZTIME) $(FUZZFLAGS)
 
 check: build vet race
+
+# 扫描全部 git 历史中的凭证（需本地安装 gitleaks：brew install gitleaks）。
+secrets:
+	gitleaks git --log-opts="--all" --redact -v .

@@ -8,3 +8,7 @@ coverage.out
 !/test/**
 .claude
 *.log
+# 本地凭证文件不入库
+.env
+.env.*
+!.env.example
